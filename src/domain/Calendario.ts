@@ -1,35 +1,23 @@
+// src/domain/Calendario.ts
+
 import { UnidadOperativa } from './UnidadOperativa.js';
 
 export class Calendario {
-  private constructor(
-    public readonly nombre: string,
-    public readonly unidadesOperativas: ReadonlyArray<UnidadOperativa>,
-  ) {}
+  public nombre: string;
+  public unidadesOperativas: UnidadOperativa[] = [];
 
-  public static create(input: {
-    nombre: string;
-    unidadesOperativas: ReadonlyArray<UnidadOperativa>;
-  }): Calendario {
-    const nombre = input.nombre.trim();
-
-    if (nombre.length === 0) {
-      throw new Error('Calendario.nombre no puede estar vacío.');
-    }
-
-    const nombresRepetidos = input.unidadesOperativas
-      .map((unidad) => unidad.nombre)
-      .filter((nombreUnidad, index, nombres) => nombres.indexOf(nombreUnidad) !== index);
-
-    if (nombresRepetidos.length > 0) {
-      throw new Error(
-        `Calendario "${nombre}" contiene unidades operativas duplicadas: ${nombresRepetidos.join(', ')}.`,
-      );
-    }
-
-    return new Calendario(nombre, [...input.unidadesOperativas]);
+  constructor(nombre: string) {
+    this.nombre = nombre;
   }
 
-  public buscarUnidadOperativa(nombre: string): UnidadOperativa | undefined {
-    return this.unidadesOperativas.find((unidad) => unidad.nombre === nombre);
+  agregarUnidadOperativa(unidad: UnidadOperativa): void {
+    this.unidadesOperativas.push(unidad);
+  }
+
+  // Método que TS te pide: buscarUnidadOperativa
+  buscarUnidadOperativa(nombreEstacion: string): UnidadOperativa | undefined {
+    return this.unidadesOperativas.find(
+      (u) => u.nombre.toUpperCase() === nombreEstacion.toUpperCase(),
+    );
   }
 }

@@ -1,4 +1,4 @@
-// src/infrastructure/excel/ExcelCalendarioReader.ts
+// src/infrastructure/excel/ExcelReader.ts
 
 import { Calendario } from '../../domain/Calendario.js';
 import { UnidadOperativa } from '../../domain/UnidadOperativa.js';
@@ -7,7 +7,7 @@ import { SheetClassifier } from './SheetClassifier.js';
 import { SheetReader } from './SheetReader.js';
 import type { TipoHoja } from './excel-types.js';
 
-export class ExcelCalendarioReader {
+export class ExcelReader {
   constructor(
     private readonly loader = new WorkbookLoader(),
     private readonly classifier = new SheetClassifier(),

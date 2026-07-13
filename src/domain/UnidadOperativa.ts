@@ -18,7 +18,10 @@ export class UnidadOperativa {
 
     const nombresRepetidos = input.empleados
       .map((empleado) => empleado.nombre)
-      .filter((nombreEmpleado, index, nombres) => nombres.indexOf(nombreEmpleado) !== index);
+      .filter(
+        (nombreEmpleado, index, nombres) =>
+          nombres.indexOf(nombreEmpleado) !== index,
+      );
 
     if (nombresRepetidos.length > 0) {
       throw new Error(
