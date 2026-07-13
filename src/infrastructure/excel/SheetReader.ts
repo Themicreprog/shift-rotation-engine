@@ -1,7 +1,7 @@
 // src/infrastructure/excel/SheetReader.ts
 
 import type { Worksheet } from 'exceljs';
-import { RawAssignment, TipoBloqueExcel, TipoHoja, WeekLayout } from './excel-types.js';
+import { RawAssignment, TipoHoja, WeekLayout } from './excel-types.js';
 import { WeekDetector } from './WeekDetector.js';
 import { BlockExtractor } from './BlockExtractor.js';
 
@@ -21,21 +21,52 @@ export class SheetReader {
   ): UnidadOperativa | null {
     if (tipoHoja === 'AUXILIAR') return null;
 
+    // ──────────────────────────────────────────────
+    // 1) WeekDetector.detect() + log
+    // ──────────────────────────────────────────────
     const layouts: WeekLayout[] = this.weekDetector.detect(worksheet);
+
+    console.log(
+      `[WeekDetector] Hoja "${worksheet.name}" - semanas detectadas: ${layouts.length}`,
+    ); // LOG 1
+
     if (layouts.length === 0) return null;
+
+    for (const layout of layouts) {
+  const dias = layout.columnasDias.map((d) => d.encabezadoTexto).join(', ');
+  console.log(
+    `[WeekDetector] Hoja "${worksheet.name}" - ${layout.etiquetaSemana} - dias detectados (${layout.columnasDias.length}): ${dias}`,
+  );
+} // LOG 1b
 
     const nombreEstacion = this.extraerNombreEstacion(worksheet);
     const esHojaDeCaja = tipoHoja === 'CAJA';
 
     const rawAssignments: RawAssignment[] = [];
+
+    // ──────────────────────────────────────────────
+    // 2) BlockExtractor.extractAssignments() + log
+    // ──────────────────────────────────────────────
     for (const layout of layouts) {
       const asignacionesSemana = this.blockExtractor.extractAssignments(
         worksheet,
         layout,
         esHojaDeCaja,
       );
+
+      console.log(
+        `[BlockExtractor] Hoja "${worksheet.name}" - ${layout.etiquetaSemana} - RawAssignment encontrados: ${asignacionesSemana.length}`,
+      ); // LOG 2
+
       rawAssignments.push(...asignacionesSemana);
     }
+
+    // ──────────────────────────────────────────────
+    // 3) Antes de construir la UnidadOperativa
+    // ──────────────────────────────────────────────
+    console.log(
+      `[SheetReader] Construyendo UnidadOperativa para estación "${nombreEstacion}" - total RawAssignment: ${rawAssignments.length}`,
+    ); // LOG 3
 
     // Agrupar por empleado y construir EstadosTurno por orden de aparición
     const estadosPorEmpleado = new Map<string, string[]>();
@@ -57,11 +88,17 @@ export class SheetReader {
       empleados.push(empleado);
     }
 
-    // Crear UnidadOperativa usando el factory del dominio
     const unidad = UnidadOperativa.create({
       nombre: nombreEstacion,
       empleados,
     });
+
+    // ──────────────────────────────────────────────
+    // 4) Después de crear la UnidadOperativa
+    // ──────────────────────────────────────────────
+    console.log(
+      `[SheetReader] UnidadOperativa creada "${unidad.nombre}" - empleados: ${unidad.cantidadEmpleados()} - asignaciones (RawAssignment): ${rawAssignments.length}`,
+    ); // LOG 4
 
     return unidad;
   }

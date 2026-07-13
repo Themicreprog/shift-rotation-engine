@@ -1,94 +1,178 @@
 // src/infrastructure/excel/WeekDetector.ts
 
-import type { Worksheet, Row, CellValue } from 'exceljs';
-import { DiaColumna, WeekLayout } from './excel-types.js';
+import type { Cell, Row, Worksheet } from 'exceljs';
+import type { DiaColumna, WeekLayout } from './excel-types.js';
 
 export class WeekDetector {
   public detect(worksheet: Worksheet): WeekLayout[] {
     const layouts: WeekLayout[] = [];
-    const ultimaFila = worksheet.rowCount;
 
-    for (let fila = 1; fila <= ultimaFila; fila += 1) {
-      const row: Row = worksheet.getRow(fila);
-      const valores = Array.isArray(row.values) ? row.values : [];
-      const textos = valores
-        .filter((v: CellValue | null | undefined): v is CellValue => v != null)
-        .map((v: CellValue) => String(v).trim());
+    for (let fila = 1; fila <= worksheet.rowCount; fila += 1) {
+      const row = worksheet.getRow(fila);
 
-      const indiceSemana = textos.findIndex((t: string) =>
-        t.toUpperCase().startsWith('SEMANA'),
-      );
-      const indiceTurnoDia = textos.findIndex(
-        (t: string) => t.toUpperCase() === 'TURNO/DIA',
-      );
+      const columnaSemana = this.buscarColumnaSemana(row);
+      const columnaTurnoDia = this.buscarColumnaTurnoDia(row);
 
-      if (indiceSemana !== -1 && indiceTurnoDia !== -1) {
-        const etiquetaSemana = textos[indiceSemana] ?? '';
-        const columnasDias = this.detectarColumnasDias(row, indiceTurnoDia + 1);
-
-        const filaEncabezado = fila;
-        const filaInicioDatos = fila + 1;
-        const filaFinDatos = this.encontrarFinDeSemana(worksheet, filaInicioDatos);
-
-        layouts.push({
-          etiquetaSemana,
-          filaEncabezado,
-          filaInicioDatos,
-          filaFinDatos,
-          columnasDias,
-        });
+      if (columnaSemana === null || columnaTurnoDia === null) {
+        continue;
       }
+
+      const etiquetaSemana = (row.getCell(columnaSemana).text ?? '').trim();
+
+      const columnasDias = this.detectarColumnasDias(
+        row,
+        columnaTurnoDia + 1,
+      );
+
+      const filaInicioDatos = fila + 1;
+
+      // Importante:
+      // Se envía la fila del encabezado actual para no confundir
+      // celdas fusionadas de esta misma semana con una semana nueva.
+      const filaFinDatos = this.encontrarFinDeSemana(
+        worksheet,
+        filaInicioDatos,
+        fila,
+      );
+
+      layouts.push({
+        etiquetaSemana,
+        filaEncabezado: fila,
+        filaInicioDatos,
+        filaFinDatos,
+        columnasDias,
+      });
     }
 
     return layouts;
   }
 
-  private detectarColumnasDias(row: Row, inicioColumna: number): DiaColumna[] {
-    const columnas: DiaColumna[] = [];
-    const ultimaColumna = row.cellCount;
+  private buscarColumnaSemana(row: Row): number | null {
+    for (let columna = 1; columna <= row.cellCount; columna += 1) {
+      const cell: Cell = row.getCell(columna);
+      const texto = (cell.text ?? '').trim().toUpperCase();
 
-    for (let col = inicioColumna; col <= ultimaColumna; col += 1) {
-      const cell = row.getCell(col);
-      const valor = cell.value;
-
-      if (valor == null) {
-        break;
+      if (texto.startsWith('SEMANA')) {
+        return columna;
       }
+    }
 
-      const texto = String(valor).trim();
+    return null;
+  }
+
+  private buscarColumnaTurnoDia(row: Row): number | null {
+    for (let columna = 1; columna <= row.cellCount; columna += 1) {
+      const cell: Cell = row.getCell(columna);
+      const texto = (cell.text ?? '').trim().toUpperCase();
+
+      if (texto === 'TURNO/DIA') {
+        return columna;
+      }
+    }
+
+    return null;
+  }
+
+  private detectarColumnasDias(
+    row: Row,
+    columnaInicio: number,
+  ): DiaColumna[] {
+    const columnasDias: DiaColumna[] = [];
+
+    for (
+      let columna = columnaInicio;
+      columna <= row.cellCount;
+      columna += 1
+    ) {
+      const cell: Cell = row.getCell(columna);
+      const texto = (cell.text ?? '').trim();
+
       if (texto.length === 0) {
         break;
       }
 
-      columnas.push({ encabezadoTexto: texto, columna: col });
+      columnasDias.push({
+        encabezadoTexto: texto,
+        columna,
+      });
     }
 
-    return columnas;
+    return columnasDias;
   }
 
-  private encontrarFinDeSemana(worksheet: Worksheet, filaInicioDatos: number): number {
-    const ultimaFila = worksheet.rowCount;
-    let fila = filaInicioDatos;
+  private encontrarFinDeSemana(
+    worksheet: Worksheet,
+    filaInicioDatos: number,
+    filaEncabezadoActual: number,
+  ): number {
+    for (
+      let fila = filaInicioDatos;
+      fila <= worksheet.rowCount;
+      fila += 1
+    ) {
+      const row = worksheet.getRow(fila);
 
-    while (fila <= ultimaFila) {
-      const row: Row = worksheet.getRow(fila);
-      const valores = Array.isArray(row.values) ? row.values : [];
-      const textos = valores
-        .filter((v: CellValue | null | undefined): v is CellValue => v != null)
-        .map((v: CellValue) => String(v).trim().toUpperCase());
+      const esNuevaSemana = this.esFilaNuevaSemana(
+        row,
+        fila,
+        filaEncabezadoActual,
+      );
 
-      const esNuevaSemana = textos.some((t: string) => t.startsWith('SEMANA'));
-      const esTablaQuincena =
-        textos.some((t: string) => t.includes('PRIMERA QUINCENA')) ||
-        textos.some((t: string) => t.includes('SEGUNDA QUINCENA'));
-
-      if (esNuevaSemana || esTablaQuincena) {
+      if (esNuevaSemana || this.esFilaResumenQuincena(row)) {
         return fila - 1;
       }
-
-      fila += 1;
     }
 
-    return ultimaFila;
+    return worksheet.rowCount;
+  }
+
+  private esFilaNuevaSemana(
+    row: Row,
+    filaActual: number,
+    filaEncabezadoActual: number,
+  ): boolean {
+    // Una celda fusionada puede repetir "SEMANA 1" visualmente
+    // en las filas debajo de su encabezado.
+    //
+    // Para cerrar una semana, exigimos que exista SEMANA y TURNO/DIA
+    // en la misma fila; esa combinación corresponde al encabezado real
+    // de una nueva semana.
+    if (filaActual <= filaEncabezadoActual) {
+      return false;
+    }
+
+    let contieneSemana = false;
+    let contieneTurnoDia = false;
+
+    for (let columna = 1; columna <= row.cellCount; columna += 1) {
+      const cell: Cell = row.getCell(columna);
+      const texto = (cell.text ?? '').trim().toUpperCase();
+
+      if (texto.startsWith('SEMANA')) {
+        contieneSemana = true;
+      }
+
+      if (texto === 'TURNO/DIA') {
+        contieneTurnoDia = true;
+      }
+    }
+
+    return contieneSemana && contieneTurnoDia;
+  }
+
+  private esFilaResumenQuincena(row: Row): boolean {
+    for (let columna = 1; columna <= row.cellCount; columna += 1) {
+      const cell: Cell = row.getCell(columna);
+      const texto = (cell.text ?? '').trim().toUpperCase();
+
+      if (
+        texto.includes('PRIMERA QUINCENA') ||
+        texto.includes('SEGUNDA QUINCENA')
+      ) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }
