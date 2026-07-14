@@ -4,20 +4,14 @@ import { GenerateNextMonthRotationUseCase } from '../../../src/application/rotat
 import { RotationContext } from '../../../src/application/rotation/RotationContext.js';
 import { RotationEngine } from '../../../src/application/rotation/RotationEngine.js';
 import { Calendario } from '../../../src/domain/Calendario.js';
-import { RotationPolicy } from '../../../src/domain/rotation/RotationPolicy.js';
 import { RotationResult } from '../../../src/domain/rotation/RotationResult.js';
 
 describe('GenerateNextMonthRotationUseCase', () => {
-  it('devuelve un RotationResult válido sin generar cambios todavía', () => {
+  it('debe delegar la ejecución al RotationEngine y devolver un RotationResult', () => {
     const calendarioOrigen = new Calendario('Junio 2026');
-
-    const rotationPolicy: RotationPolicy = {};
-
-    const rotationEngine = new RotationEngine(rotationPolicy);
-
-    const useCase = new GenerateNextMonthRotationUseCase(rotationEngine);
-
     const context = new RotationContext(calendarioOrigen);
+    const rotationEngine = new RotationEngine();
+    const useCase = new GenerateNextMonthRotationUseCase(rotationEngine);
 
     const result = useCase.execute(context);
 
