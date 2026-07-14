@@ -1,21 +1,59 @@
-import { RotationResult } from '../../domain/rotation/RotationResult.js';
-import { ValidacionPlanificacion } from '../../domain/planning/ValidacionPlanificacion.js';
+import { AnalizadorEstadoFinalCalendario } from './AnalizadorEstadoFinalCalendario.js';
 import { PlanificacionInputValidator } from './PlanificacionInputValidator.js';
+import { ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa } from './ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa.js';
 import { SolicitudPlanificacion } from './SolicitudPlanificacion.js';
+import { ResultadoPlanificacion } from './ResultadoPlanificacion.js';
+import { Calendario } from '../../domain/Calendario.js';
 
 export class PlanningEngine {
-  public constructor(
-    private readonly inputValidator: PlanificacionInputValidator,
+  constructor(
+    private readonly planificacionInputValidator: PlanificacionInputValidator,
+    private readonly analizadorEstadoFinalCalendario: AnalizadorEstadoFinalCalendario,
+    private readonly resolverPeriodoParaUnidadOperativa: ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa,
   ) {}
 
-  public execute(solicitud: SolicitudPlanificacion): RotationResult {
-    const validacion: ValidacionPlanificacion = this.inputValidator.validate(solicitud);
+  execute(solicitud: SolicitudPlanificacion): ResultadoPlanificacion {
+    const validacion = this.planificacionInputValidator.validate(solicitud);
 
-    return new RotationResult(
-      solicitud.calendarioOrigen,
-      [],
-      [],
-      validacion.esValida ? [] : validacion.errores,
+    if (!validacion.esValida) {
+      return ResultadoPlanificacion.conConflictos(
+        solicitud.calendarioOrigen,
+        validacion.errores,
+      );
+    }
+
+    const calendarioDestino = new Calendario(
+      `PLANIFICACION-${solicitud.periodoDestino.fechaInicio.getUTCFullYear()}-${String(
+        solicitud.periodoDestino.fechaInicio.getUTCMonth() + 1,
+      ).padStart(2, '0')}-COMPLETO`,
     );
+
+    const unidadesOrigen = solicitud.alcanceOperativo.unidadesOperativas.map(
+      (nombreUnidadOperativa) => {
+        const unidadOperativa =
+          solicitud.calendarioOrigen.buscarUnidadOperativa(nombreUnidadOperativa);
+
+        if (!unidadOperativa) {
+          throw new Error(
+            `La unidad operativa "${nombreUnidadOperativa}" no existe en el calendario origen.`,
+          );
+        }
+
+        return unidadOperativa;
+      },
+    );
+
+    this.analizadorEstadoFinalCalendario.analyze(solicitud.calendarioOrigen);
+
+    for (const unidadOrigen of unidadesOrigen) {
+      const unidadDestino = this.resolverPeriodoParaUnidadOperativa.resolver(
+        unidadOrigen,
+        solicitud.periodoDestino,
+      );
+
+      calendarioDestino.agregarUnidadOperativa(unidadDestino);
+    }
+
+    return ResultadoPlanificacion.exitoso(calendarioDestino);
   }
 }
