@@ -7,6 +7,7 @@ import { UnidadOperativa } from '../../../src/domain/UnidadOperativa.js';
 
 describe('AnalizadorEstadoFinalEmpleado', () => {
   const analizador = new AnalizadorEstadoFinalEmpleado();
+
   const unidad = UnidadOperativa.create({
     nombre: 'TRUCK STOP',
     empleados: [],
@@ -24,7 +25,6 @@ describe('AnalizadorEstadoFinalEmpleado', () => {
     const resumen = analizador.analyze(unidad, empleado);
 
     expect(resumen.ultimoEstadoRegistrado.valor).toBe('LIBRE');
-    expect(resumen.ultimaAsignacionValida.valor).toBe('LIBRE');
     expect(resumen.ultimaAsignacionOperativaValida?.valor).toBe('TURNO A');
   });
 

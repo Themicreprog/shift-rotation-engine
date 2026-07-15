@@ -14,7 +14,6 @@ describe('DecisorPrimerDiaContinuidadSimple', () => {
       ultimoDiaConInformacion: 2,
       ultimoEstadoRegistrado: EstadoTurno.create('Libre'),
       ultimoTurno: 'LIBRE',
-      ultimaAsignacionValida: EstadoTurno.create('Libre'),
       ultimaAsignacionOperativaValida: EstadoTurno.create('Turno B'),
     });
 
@@ -30,7 +29,6 @@ describe('DecisorPrimerDiaContinuidadSimple', () => {
       ultimoDiaConInformacion: 1,
       ultimoEstadoRegistrado: EstadoTurno.create('Turno A'),
       ultimoTurno: 'TURNO A',
-      ultimaAsignacionValida: EstadoTurno.create('Turno A'),
       ultimaAsignacionOperativaValida: EstadoTurno.create('Turno A'),
     });
 
@@ -46,7 +44,6 @@ describe('DecisorPrimerDiaContinuidadSimple', () => {
       ultimoDiaConInformacion: 2,
       ultimoEstadoRegistrado: EstadoTurno.create('Libre'),
       ultimoTurno: 'LIBRE',
-      ultimaAsignacionValida: EstadoTurno.create('Libre'),
       ultimaAsignacionOperativaValida: null,
     });
 

@@ -7,7 +7,6 @@ export class ResumenEstadoFinalEmpleado {
     public readonly ultimoDiaConInformacion: number,
     public readonly ultimoEstadoRegistrado: EstadoTurno,
     public readonly ultimoTurno: string,
-    public readonly ultimaAsignacionValida: EstadoTurno,
     public readonly ultimaAsignacionOperativaValida: EstadoTurno | null,
   ) {}
 
@@ -17,7 +16,6 @@ export class ResumenEstadoFinalEmpleado {
     ultimoDiaConInformacion: number;
     ultimoEstadoRegistrado: EstadoTurno;
     ultimoTurno: string;
-    ultimaAsignacionValida: EstadoTurno;
     ultimaAsignacionOperativaValida: EstadoTurno | null;
   }): ResumenEstadoFinalEmpleado {
     const nombreEmpleado = input.nombreEmpleado.trim();
@@ -25,21 +23,30 @@ export class ResumenEstadoFinalEmpleado {
     const ultimoTurno = input.ultimoTurno.trim().toUpperCase();
 
     if (nombreEmpleado.length === 0) {
-      throw new Error('ResumenEstadoFinalEmpleado.nombreEmpleado no puede estar vacío.');
+      throw new Error(
+        'ResumenEstadoFinalEmpleado.nombreEmpleado no puede estar vacío.',
+      );
     }
 
     if (nombreUnidadOperativa.length === 0) {
-      throw new Error('ResumenEstadoFinalEmpleado.nombreUnidadOperativa no puede estar vacío.');
+      throw new Error(
+        'ResumenEstadoFinalEmpleado.nombreUnidadOperativa no puede estar vacío.',
+      );
     }
 
-    if (!Number.isInteger(input.ultimoDiaConInformacion) || input.ultimoDiaConInformacion <= 0) {
+    if (
+      !Number.isInteger(input.ultimoDiaConInformacion) ||
+      input.ultimoDiaConInformacion <= 0
+    ) {
       throw new Error(
         'ResumenEstadoFinalEmpleado.ultimoDiaConInformacion debe ser un entero mayor que cero.',
       );
     }
 
     if (ultimoTurno.length === 0) {
-      throw new Error('ResumenEstadoFinalEmpleado.ultimoTurno no puede estar vacío.');
+      throw new Error(
+        'ResumenEstadoFinalEmpleado.ultimoTurno no puede estar vacío.',
+      );
     }
 
     return new ResumenEstadoFinalEmpleado(
@@ -48,7 +55,6 @@ export class ResumenEstadoFinalEmpleado {
       input.ultimoDiaConInformacion,
       input.ultimoEstadoRegistrado,
       ultimoTurno,
-      input.ultimaAsignacionValida,
       input.ultimaAsignacionOperativaValida,
     );
   }

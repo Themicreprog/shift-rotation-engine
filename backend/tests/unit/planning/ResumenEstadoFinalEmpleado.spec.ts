@@ -6,7 +6,7 @@ import { ResumenEstadoFinalEmpleado } from '../../../src/domain/planning/Resumen
 describe('ResumenEstadoFinalEmpleado', () => {
   it('crea un resumen válido del estado final de un empleado', () => {
     const ultimoEstado = EstadoTurno.create('Turno B');
-    const ultimaAsignacion = EstadoTurno.create('Turno B');
+    const ultimaAsignacionOperativa = EstadoTurno.create('Turno B');
 
     const resumen = ResumenEstadoFinalEmpleado.create({
       nombreEmpleado: 'Rony',
@@ -14,7 +14,7 @@ describe('ResumenEstadoFinalEmpleado', () => {
       ultimoDiaConInformacion: 31,
       ultimoEstadoRegistrado: ultimoEstado,
       ultimoTurno: 'turno b',
-      ultimaAsignacionValida: ultimaAsignacion,
+      ultimaAsignacionOperativaValida: ultimaAsignacionOperativa,
     });
 
     expect(resumen.nombreEmpleado).toBe('Rony');
@@ -22,7 +22,9 @@ describe('ResumenEstadoFinalEmpleado', () => {
     expect(resumen.ultimoDiaConInformacion).toBe(31);
     expect(resumen.ultimoEstadoRegistrado).toBe(ultimoEstado);
     expect(resumen.ultimoTurno).toBe('TURNO B');
-    expect(resumen.ultimaAsignacionValida).toBe(ultimaAsignacion);
+    expect(resumen.ultimaAsignacionOperativaValida).toBe(
+      ultimaAsignacionOperativa,
+    );
   });
 
   it('falla si el nombre del empleado está vacío', () => {
@@ -33,9 +35,11 @@ describe('ResumenEstadoFinalEmpleado', () => {
         ultimoDiaConInformacion: 31,
         ultimoEstadoRegistrado: EstadoTurno.create('Turno A'),
         ultimoTurno: 'TURNO A',
-        ultimaAsignacionValida: EstadoTurno.create('Turno A'),
+        ultimaAsignacionOperativaValida: EstadoTurno.create('Turno A'),
       }),
-    ).toThrowError('ResumenEstadoFinalEmpleado.nombreEmpleado no puede estar vacío.');
+    ).toThrowError(
+      'ResumenEstadoFinalEmpleado.nombreEmpleado no puede estar vacío.',
+    );
   });
 
   it('falla si el último día con información no es válido', () => {
@@ -46,7 +50,7 @@ describe('ResumenEstadoFinalEmpleado', () => {
         ultimoDiaConInformacion: 0,
         ultimoEstadoRegistrado: EstadoTurno.create('LIBRE'),
         ultimoTurno: 'LIBRE',
-        ultimaAsignacionValida: EstadoTurno.create('LIBRE'),
+        ultimaAsignacionOperativaValida: null,
       }),
     ).toThrowError(
       'ResumenEstadoFinalEmpleado.ultimoDiaConInformacion debe ser un entero mayor que cero.',
