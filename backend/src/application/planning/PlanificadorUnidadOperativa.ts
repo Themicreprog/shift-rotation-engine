@@ -2,6 +2,7 @@ import { AnalizadorEstadoFinalEmpleado } from './AnalizadorEstadoFinalEmpleado.j
 import { DecisorPrimerDiaContinuidadSimple } from './DecisorPrimerDiaContinuidadSimple.js';
 import { DistribuidorDiaLibre } from './DistribuidorDiaLibre.js';
 import { GeneradorRotacionSemanal } from './GeneradorRotacionSemanal.js';
+import { ValidadorCobertura } from './ValidadorCobertura.js';
 
 import { Empleado } from '../../domain/Empleado.js';
 import { UnidadOperativa } from '../../domain/UnidadOperativa.js';
@@ -13,12 +14,14 @@ export class PlanificadorUnidadOperativa {
     private readonly decisorPrimerDiaContinuidadSimple: DecisorPrimerDiaContinuidadSimple,
     private readonly generadorRotacionSemanal: GeneradorRotacionSemanal,
     private readonly distribuidorDiaLibre: DistribuidorDiaLibre,
+    private readonly validadorCobertura: ValidadorCobertura,
   ) {}
 
   public planificar(
     unidadOperativaOrigen: UnidadOperativa,
     periodoDestino: PeriodoPlanificacion,
   ): UnidadOperativa {
+
     const distribucionDiasLibres =
       this.distribuidorDiaLibre.distribuir(
         unidadOperativaOrigen.empleados,
@@ -34,10 +37,32 @@ export class PlanificadorUnidadOperativa {
         ),
     );
 
-    return UnidadOperativa.create({
+    const unidadPlanificada = UnidadOperativa.create({
       nombre: unidadOperativaOrigen.nombre,
       empleados: empleadosDestino,
     });
+
+    // Temporal.
+    // Más adelante la cobertura mínima vendrá desde UnidadOperativa.
+    const coberturaMinima =
+      unidadOperativaOrigen.nombre.toUpperCase().includes('CAJA')
+        ? 1
+        : 3;
+
+    const incidencias =
+      this.validadorCobertura.validar(
+        unidadPlanificada,
+        coberturaMinima,
+      );
+
+    if (incidencias.length > 0) {
+      console.warn(
+        `Cobertura insuficiente en ${unidadOperativaOrigen.nombre}`,
+        incidencias,
+      );
+    }
+
+    return unidadPlanificada;
   }
 
   private planificarEmpleado(
@@ -46,6 +71,7 @@ export class PlanificadorUnidadOperativa {
     periodoDestino: PeriodoPlanificacion,
     distribucionDiasLibres: ReadonlyMap<string, number>,
   ): Empleado {
+
     const resumen =
       this.analizadorEstadoFinalEmpleado.analyze(
         unidadOperativaOrigen,
