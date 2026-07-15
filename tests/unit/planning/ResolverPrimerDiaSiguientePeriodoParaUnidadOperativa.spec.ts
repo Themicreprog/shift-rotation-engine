@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { AnalizadorEstadoFinalEmpleado } from '../../../src/application/planning/AnalizadorEstadoFinalEmpleado.js';
 import { DecisorPrimerDiaContinuidadSimple } from '../../../src/application/planning/DecisorPrimerDiaContinuidadSimple.js';
-import { GeneradorEstadosContinuidadSimple } from '../../../src/application/planning/GeneradorEstadosContinuidadSimple.js';
+import { DistribuidorDiaLibre } from '../../../src/application/planning/DistribuidorDiaLibre.js';
+import { GeneradorRotacionSemanal } from '../../../src/application/planning/GeneradorRotacionSemanal.js';
 import { ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa } from '../../../src/application/planning/ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa.js';
 import { Empleado } from '../../../src/domain/Empleado.js';
 import { EstadoTurno } from '../../../src/domain/EstadoTurno.js';
@@ -45,7 +46,8 @@ describe('ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa', () => {
     const resolver = new ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa(
       new AnalizadorEstadoFinalEmpleado(),
       new DecisorPrimerDiaContinuidadSimple(),
-      new GeneradorEstadosContinuidadSimple(),
+      new GeneradorRotacionSemanal(),
+      new DistribuidorDiaLibre(),
     );
 
     const resultado = resolver.resolver(unidadOperativa, periodoDestino);
@@ -53,14 +55,22 @@ describe('ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa', () => {
     expect(resultado.nombre).toBe('TRUCK STOP');
     expect(resultado.empleados).toHaveLength(3);
 
-    const joel = resultado.empleados.find((empleado: Empleado) => empleado.nombre === 'Joel');
-    const julio = resultado.empleados.find((empleado: Empleado) => empleado.nombre === 'Julio');
-    const mario = resultado.empleados.find((empleado: Empleado) => empleado.nombre === 'Mario');
+    const joel = resultado.empleados.find(
+      (empleado: Empleado) => empleado.nombre === 'Joel',
+    );
+    const julio = resultado.empleados.find(
+      (empleado: Empleado) => empleado.nombre === 'Julio',
+    );
+    const mario = resultado.empleados.find(
+      (empleado: Empleado) => empleado.nombre === 'Mario',
+    );
 
     expect(joel).toBeDefined();
     expect(joel!.totalDias()).toBe(31);
-    expect(joel!.estadoDelDia(1).valor).toBe('LIBRE');
-    expect(joel!.estadoDelDia(31).valor).toBe('LIBRE');
+
+    // C-02
+    expect(joel!.estadoDelDia(1).valor).toBe('TURNO A');
+    expect(joel!.estadoDelDia(31).valor).toBe('TURNO A');
 
     expect(julio).toBeDefined();
     expect(julio!.totalDias()).toBe(31);
@@ -87,7 +97,8 @@ describe('ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa', () => {
     const resolver = new ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa(
       new AnalizadorEstadoFinalEmpleado(),
       new DecisorPrimerDiaContinuidadSimple(),
-      new GeneradorEstadosContinuidadSimple(),
+      new GeneradorRotacionSemanal(),
+      new DistribuidorDiaLibre(),
     );
 
     const resultado = resolver.resolver(unidadOperativa, periodoDestino);

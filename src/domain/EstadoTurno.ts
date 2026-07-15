@@ -14,4 +14,8 @@ export class EstadoTurno {
   public equals(otro: EstadoTurno): boolean {
     return this.valor === otro.valor;
   }
+
+  public esAsignacionOperativa(): boolean {
+    return this.valor === 'TURNO A' || this.valor === 'TURNO B';
+  }
 }

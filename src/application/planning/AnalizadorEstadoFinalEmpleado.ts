@@ -11,6 +11,8 @@ export class AnalizadorEstadoFinalEmpleado {
     const ultimoDiaConInformacion = empleado.totalDias();
     const ultimoEstadoRegistrado = empleado.estadoDelDia(ultimoDiaConInformacion);
     const ultimaAsignacionValida = ultimoEstadoRegistrado;
+    const ultimaAsignacionOperativaValida =
+      this.buscarUltimaAsignacionOperativaValida(empleado);
     const ultimoTurno = this.normalizarTurno(ultimoEstadoRegistrado);
 
     return ResumenEstadoFinalEmpleado.create({
@@ -20,7 +22,22 @@ export class AnalizadorEstadoFinalEmpleado {
       ultimoEstadoRegistrado,
       ultimoTurno,
       ultimaAsignacionValida,
+      ultimaAsignacionOperativaValida,
     });
+  }
+
+  private buscarUltimaAsignacionOperativaValida(
+    empleado: Empleado,
+  ): EstadoTurno | null {
+    for (let dia = empleado.totalDias(); dia >= 1; dia -= 1) {
+      const estado = empleado.estadoDelDia(dia);
+
+      if (estado.esAsignacionOperativa()) {
+        return estado;
+      }
+    }
+
+    return null;
   }
 
   private normalizarTurno(estado: EstadoTurno): string {

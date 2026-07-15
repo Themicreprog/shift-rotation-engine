@@ -2,19 +2,20 @@ import { AnalizadorEstadoFinalEmpleado } from './AnalizadorEstadoFinalEmpleado.j
 import { DecisorPrimerDiaContinuidadSimple } from './DecisorPrimerDiaContinuidadSimple.js';
 import { DistribuidorDiaLibre } from './DistribuidorDiaLibre.js';
 import { GeneradorRotacionSemanal } from './GeneradorRotacionSemanal.js';
-import { PeriodoPlanificacion } from '../../domain/planning/PeriodoPlanificacion.js';
-import { UnidadOperativa } from '../../domain/UnidadOperativa.js';
-import { Empleado } from '../../domain/Empleado.js';
 
-export class ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa {
+import { Empleado } from '../../domain/Empleado.js';
+import { UnidadOperativa } from '../../domain/UnidadOperativa.js';
+import { PeriodoPlanificacion } from '../../domain/planning/PeriodoPlanificacion.js';
+
+export class PlanificadorUnidadOperativa {
   constructor(
     private readonly analizadorEstadoFinalEmpleado: AnalizadorEstadoFinalEmpleado,
     private readonly decisorPrimerDiaContinuidadSimple: DecisorPrimerDiaContinuidadSimple,
-private readonly generadorRotacionSemanal: GeneradorRotacionSemanal,
+    private readonly generadorRotacionSemanal: GeneradorRotacionSemanal,
     private readonly distribuidorDiaLibre: DistribuidorDiaLibre,
   ) {}
 
-  public resolver(
+  public planificar(
     unidadOperativaOrigen: UnidadOperativa,
     periodoDestino: PeriodoPlanificacion,
   ): UnidadOperativa {
@@ -24,10 +25,10 @@ private readonly generadorRotacionSemanal: GeneradorRotacionSemanal,
       );
 
     const empleadosDestino = unidadOperativaOrigen.empleados.map(
-      (empleadoOrigen) =>
-        this.resolverEmpleado(
+      (empleado) =>
+        this.planificarEmpleado(
           unidadOperativaOrigen,
-          empleadoOrigen,
+          empleado,
           periodoDestino,
           distribucionDiasLibres,
         ),
@@ -39,21 +40,21 @@ private readonly generadorRotacionSemanal: GeneradorRotacionSemanal,
     });
   }
 
-  private resolverEmpleado(
+  private planificarEmpleado(
     unidadOperativaOrigen: UnidadOperativa,
     empleadoOrigen: Empleado,
     periodoDestino: PeriodoPlanificacion,
     distribucionDiasLibres: ReadonlyMap<string, number>,
   ): Empleado {
-    const resumenEstadoFinal =
+    const resumen =
       this.analizadorEstadoFinalEmpleado.analyze(
         unidadOperativaOrigen,
         empleadoOrigen,
       );
 
-    const estadoPrimerDia =
+    const estadoInicial =
       this.decisorPrimerDiaContinuidadSimple.decide(
-        resumenEstadoFinal,
+        resumen,
       );
 
     const posicionLibre =
@@ -62,16 +63,16 @@ private readonly generadorRotacionSemanal: GeneradorRotacionSemanal,
         distribucionDiasLibres,
       );
 
-    const estadosPorDia =
+    const estados =
       this.generadorRotacionSemanal.generar(
-        estadoPrimerDia,
+        estadoInicial,
         periodoDestino.totalDias(),
         posicionLibre,
       );
 
     return Empleado.create({
       nombre: empleadoOrigen.nombre,
-      estadosPorDia,
+      estadosPorDia: estados,
     });
   }
 }

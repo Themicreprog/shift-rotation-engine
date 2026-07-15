@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { AnalizadorEstadoFinalCalendario } from '../../../src/application/planning/AnalizadorEstadoFinalCalendario.js';
 import { AnalizadorEstadoFinalEmpleado } from '../../../src/application/planning/AnalizadorEstadoFinalEmpleado.js';
 import { DecisorPrimerDiaContinuidadSimple } from '../../../src/application/planning/DecisorPrimerDiaContinuidadSimple.js';
-import { GeneradorEstadosContinuidadSimple } from '../../../src/application/planning/GeneradorEstadosContinuidadSimple.js';
+import { DistribuidorDiaLibre } from '../../../src/application/planning/DistribuidorDiaLibre.js';
+import { GeneradorRotacionSemanal } from '../../../src/application/planning/GeneradorRotacionSemanal.js';
 import { GeneratePlanningProposalUseCase } from '../../../src/application/planning/GeneratePlanningProposalUseCase.js';
 import { PlanificacionInputValidator } from '../../../src/application/planning/PlanificacionInputValidator.js';
 import { PlanningEngine } from '../../../src/application/planning/PlanningEngine.js';
@@ -47,11 +48,14 @@ describe('GeneratePlanningProposalUseCase', () => {
     const useCase = new GeneratePlanningProposalUseCase(
       new PlanningEngine(
         new PlanificacionInputValidator(),
-        new AnalizadorEstadoFinalCalendario(new AnalizadorEstadoFinalEmpleado()),
+        new AnalizadorEstadoFinalCalendario(
+          new AnalizadorEstadoFinalEmpleado(),
+        ),
         new ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa(
           new AnalizadorEstadoFinalEmpleado(),
           new DecisorPrimerDiaContinuidadSimple(),
-          new GeneradorEstadosContinuidadSimple(),
+          new GeneradorRotacionSemanal(),
+          new DistribuidorDiaLibre(),
         ),
       ),
     );
@@ -62,7 +66,9 @@ describe('GeneratePlanningProposalUseCase', () => {
     expect(result.cambios).toEqual([]);
     expect(result.advertencias).toEqual([]);
     expect(result.conflictos).toEqual([]);
-    expect(result.calendario.nombre).toBe('PLANIFICACION-2026-07-COMPLETO');
+    expect(result.calendario.nombre).toBe(
+      'PLANIFICACION-2026-07-COMPLETO',
+    );
     expect(result.calendario.unidadesOperativas).toHaveLength(1);
 
     const unidad = result.calendario.buscarUnidadOperativa('CACAO');
@@ -70,11 +76,15 @@ describe('GeneratePlanningProposalUseCase', () => {
     expect(unidad).toBeDefined();
     expect(unidad!.empleados).toHaveLength(1);
 
-    const empleado = unidad!.empleados.find((item: Empleado) => item.nombre === 'Rony');
+    const empleado = unidad!.empleados.find(
+      (item: Empleado) => item.nombre === 'Rony',
+    );
 
     expect(empleado).toBeDefined();
     expect(empleado!.nombre).toBe('Rony');
     expect(empleado!.totalDias()).toBe(31);
+
+    // Estas expectativas cambiarán cuando el motor semanal sea el comportamiento oficial.
     expect(empleado!.estadoDelDia(1).valor).toBe('TURNO A');
     expect(empleado!.estadoDelDia(31).valor).toBe('TURNO A');
   });

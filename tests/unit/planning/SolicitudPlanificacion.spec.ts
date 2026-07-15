@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { AnalizadorEstadoFinalCalendario } from '../../../src/application/planning/AnalizadorEstadoFinalCalendario.js';
 import { AnalizadorEstadoFinalEmpleado } from '../../../src/application/planning/AnalizadorEstadoFinalEmpleado.js';
 import { DecisorPrimerDiaContinuidadSimple } from '../../../src/application/planning/DecisorPrimerDiaContinuidadSimple.js';
-import { GeneradorEstadosContinuidadSimple } from '../../../src/application/planning/GeneradorEstadosContinuidadSimple.js';
+import { DistribuidorDiaLibre } from '../../../src/application/planning/DistribuidorDiaLibre.js';
+import { GeneradorRotacionSemanal } from '../../../src/application/planning/GeneradorRotacionSemanal.js';
 import { PlanificacionInputValidator } from '../../../src/application/planning/PlanificacionInputValidator.js';
 import { PlanningEngine } from '../../../src/application/planning/PlanningEngine.js';
 import { ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa } from '../../../src/application/planning/ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa.js';
@@ -39,11 +40,14 @@ describe('PlanningEngine', () => {
 
     const engine = new PlanningEngine(
       new PlanificacionInputValidator(),
-      new AnalizadorEstadoFinalCalendario(new AnalizadorEstadoFinalEmpleado()),
+      new AnalizadorEstadoFinalCalendario(
+        new AnalizadorEstadoFinalEmpleado(),
+      ),
       new ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa(
         new AnalizadorEstadoFinalEmpleado(),
         new DecisorPrimerDiaContinuidadSimple(),
-        new GeneradorEstadosContinuidadSimple(),
+        new GeneradorRotacionSemanal(),
+        new DistribuidorDiaLibre(),
       ),
     );
 
@@ -101,11 +105,14 @@ describe('PlanningEngine', () => {
 
     const engine = new PlanningEngine(
       new PlanificacionInputValidator(),
-      new AnalizadorEstadoFinalCalendario(new AnalizadorEstadoFinalEmpleado()),
+      new AnalizadorEstadoFinalCalendario(
+        new AnalizadorEstadoFinalEmpleado(),
+      ),
       new ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa(
         new AnalizadorEstadoFinalEmpleado(),
         new DecisorPrimerDiaContinuidadSimple(),
-        new GeneradorEstadosContinuidadSimple(),
+        new GeneradorRotacionSemanal(),
+        new DistribuidorDiaLibre(),
       ),
     );
 
@@ -116,20 +123,30 @@ describe('PlanningEngine', () => {
     expect(resultado.conflictos).toEqual([]);
 
     expect(resultado.calendario).not.toBe(calendario);
-    expect(resultado.calendario.nombre).toBe('PLANIFICACION-2026-07-COMPLETO');
+    expect(resultado.calendario.nombre).toBe(
+      'PLANIFICACION-2026-07-COMPLETO',
+    );
     expect(resultado.calendario.unidadesOperativas).toHaveLength(2);
 
-    const truckStop = resultado.calendario.buscarUnidadOperativa('TRUCK STOP');
-    const cajeros = resultado.calendario.buscarUnidadOperativa('CAJEROS');
+    const truckStop =
+      resultado.calendario.buscarUnidadOperativa('TRUCK STOP');
+    const cajeros =
+      resultado.calendario.buscarUnidadOperativa('CAJEROS');
 
     expect(truckStop).toBeDefined();
     expect(cajeros).toBeDefined();
 
     expect(truckStop!.empleados).toHaveLength(2);
 
-    const joel = truckStop!.empleados.find((empleado: Empleado) => empleado.nombre === 'Joel');
-    const julio = truckStop!.empleados.find((empleado: Empleado) => empleado.nombre === 'Julio');
-    const mario = cajeros!.empleados.find((empleado: Empleado) => empleado.nombre === 'Mario');
+    const joel = truckStop!.empleados.find(
+      (empleado: Empleado) => empleado.nombre === 'Joel',
+    );
+    const julio = truckStop!.empleados.find(
+      (empleado: Empleado) => empleado.nombre === 'Julio',
+    );
+    const mario = cajeros!.empleados.find(
+      (empleado: Empleado) => empleado.nombre === 'Mario',
+    );
 
     expect(joel).toBeDefined();
     expect(joel!.nombre).toBe('Joel');
@@ -191,18 +208,25 @@ describe('PlanningEngine', () => {
 
     const engine = new PlanningEngine(
       new PlanificacionInputValidator(),
-      new AnalizadorEstadoFinalCalendario(new AnalizadorEstadoFinalEmpleado()),
+      new AnalizadorEstadoFinalCalendario(
+        new AnalizadorEstadoFinalEmpleado(),
+      ),
       new ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa(
         new AnalizadorEstadoFinalEmpleado(),
         new DecisorPrimerDiaContinuidadSimple(),
-        new GeneradorEstadosContinuidadSimple(),
+        new GeneradorRotacionSemanal(),
+        new DistribuidorDiaLibre(),
       ),
     );
 
     const resultado = engine.execute(solicitud);
 
     expect(resultado.calendario.unidadesOperativas).toHaveLength(1);
-    expect(resultado.calendario.buscarUnidadOperativa('CAJEROS')).toBeDefined();
-    expect(resultado.calendario.buscarUnidadOperativa('TRUCK STOP')).toBeUndefined();
+    expect(
+      resultado.calendario.buscarUnidadOperativa('CAJEROS'),
+    ).toBeDefined();
+    expect(
+      resultado.calendario.buscarUnidadOperativa('TRUCK STOP'),
+    ).toBeUndefined();
   });
 });

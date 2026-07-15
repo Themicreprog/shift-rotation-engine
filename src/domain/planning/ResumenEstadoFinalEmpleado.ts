@@ -8,6 +8,7 @@ export class ResumenEstadoFinalEmpleado {
     public readonly ultimoEstadoRegistrado: EstadoTurno,
     public readonly ultimoTurno: string,
     public readonly ultimaAsignacionValida: EstadoTurno,
+    public readonly ultimaAsignacionOperativaValida: EstadoTurno | null,
   ) {}
 
   public static create(input: {
@@ -17,6 +18,7 @@ export class ResumenEstadoFinalEmpleado {
     ultimoEstadoRegistrado: EstadoTurno;
     ultimoTurno: string;
     ultimaAsignacionValida: EstadoTurno;
+    ultimaAsignacionOperativaValida: EstadoTurno | null;
   }): ResumenEstadoFinalEmpleado {
     const nombreEmpleado = input.nombreEmpleado.trim();
     const nombreUnidadOperativa = input.nombreUnidadOperativa.trim();
@@ -47,6 +49,7 @@ export class ResumenEstadoFinalEmpleado {
       input.ultimoEstadoRegistrado,
       ultimoTurno,
       input.ultimaAsignacionValida,
+      input.ultimaAsignacionOperativaValida,
     );
   }
 }

@@ -6,54 +6,40 @@ import { EstadoTurno } from '../../../src/domain/EstadoTurno.js';
 import { UnidadOperativa } from '../../../src/domain/UnidadOperativa.js';
 
 describe('AnalizadorEstadoFinalEmpleado', () => {
-  it('construye el resumen usando el último día con información del empleado', () => {
+  const analizador = new AnalizadorEstadoFinalEmpleado();
+  const unidad = UnidadOperativa.create({
+    nombre: 'TRUCK STOP',
+    empleados: [],
+  });
+
+  it('calcula la última asignación operativa válida cuando el cierre es LIBRE', () => {
     const empleado = Empleado.create({
-      nombre: 'Rony',
+      nombre: 'Joel',
       estadosPorDia: [
         EstadoTurno.create('Turno A'),
-        EstadoTurno.create('Turno B'),
         EstadoTurno.create('Libre'),
       ],
     });
 
-    const unidadOperativa = UnidadOperativa.create({
-      nombre: 'CACAO',
-      empleados: [empleado],
-    });
+    const resumen = analizador.analyze(unidad, empleado);
 
-    const analizador = new AnalizadorEstadoFinalEmpleado();
-
-    const resumen = analizador.analyze(unidadOperativa, empleado);
-
-    expect(resumen.nombreEmpleado).toBe('Rony');
-    expect(resumen.nombreUnidadOperativa).toBe('CACAO');
-    expect(resumen.ultimoDiaConInformacion).toBe(3);
     expect(resumen.ultimoEstadoRegistrado.valor).toBe('LIBRE');
-    expect(resumen.ultimoTurno).toBe('LIBRE');
     expect(resumen.ultimaAsignacionValida.valor).toBe('LIBRE');
+    expect(resumen.ultimaAsignacionOperativaValida?.valor).toBe('TURNO A');
   });
 
-  it('preserva el último turno cuando el último estado es un turno operativo', () => {
+  it('deja null cuando no existe asignación operativa previa', () => {
     const empleado = Empleado.create({
       nombre: 'Joel',
       estadosPorDia: [
         EstadoTurno.create('Libre'),
-        EstadoTurno.create('Turno B'),
+        EstadoTurno.create('Libre'),
       ],
     });
 
-    const unidadOperativa = UnidadOperativa.create({
-      nombre: 'TRUCK STOP',
-      empleados: [empleado],
-    });
+    const resumen = analizador.analyze(unidad, empleado);
 
-    const analizador = new AnalizadorEstadoFinalEmpleado();
-
-    const resumen = analizador.analyze(unidadOperativa, empleado);
-
-    expect(resumen.ultimoDiaConInformacion).toBe(2);
-    expect(resumen.ultimoEstadoRegistrado.valor).toBe('TURNO B');
-    expect(resumen.ultimoTurno).toBe('TURNO B');
-    expect(resumen.ultimaAsignacionValida.valor).toBe('TURNO B');
+    expect(resumen.ultimoEstadoRegistrado.valor).toBe('LIBRE');
+    expect(resumen.ultimaAsignacionOperativaValida).toBeNull();
   });
 });

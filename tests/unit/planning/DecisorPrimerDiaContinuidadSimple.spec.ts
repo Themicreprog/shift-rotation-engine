@@ -5,117 +5,53 @@ import { EstadoTurno } from '../../../src/domain/EstadoTurno.js';
 import { ResumenEstadoFinalEmpleado } from '../../../src/domain/planning/ResumenEstadoFinalEmpleado.js';
 
 describe('DecisorPrimerDiaContinuidadSimple', () => {
-  it('conserva TURNO A cuando el último estado conocido es TURNO A', () => {
-    const ultimoEstadoRegistrado = EstadoTurno.create('Turno A');
+  const decisor = new DecisorPrimerDiaContinuidadSimple();
 
-    const resumen = ResumenEstadoFinalEmpleado.create({
-      nombreEmpleado: 'Rony',
-      nombreUnidadOperativa: 'CACAO',
-      ultimoDiaConInformacion: 30,
-      ultimoEstadoRegistrado,
-      ultimoTurno: 'TURNO A',
-      ultimaAsignacionValida: ultimoEstadoRegistrado,
-    });
-
-    const decisor = new DecisorPrimerDiaContinuidadSimple();
-
-    const estadoPrimerDia = decisor.decide(resumen);
-
-    expect(estadoPrimerDia.valor).toBe('TURNO A');
-  });
-
-  it('conserva TURNO B cuando el último estado conocido es TURNO B', () => {
-    const ultimoEstadoRegistrado = EstadoTurno.create('Turno B');
-
+  it('usa la última asignación operativa válida cuando el cierre es LIBRE', () => {
     const resumen = ResumenEstadoFinalEmpleado.create({
       nombreEmpleado: 'Joel',
       nombreUnidadOperativa: 'TRUCK STOP',
-      ultimoDiaConInformacion: 30,
-      ultimoEstadoRegistrado,
-      ultimoTurno: 'TURNO B',
-      ultimaAsignacionValida: ultimoEstadoRegistrado,
-    });
-
-    const decisor = new DecisorPrimerDiaContinuidadSimple();
-
-    const estadoPrimerDia = decisor.decide(resumen);
-
-    expect(estadoPrimerDia.valor).toBe('TURNO B');
-  });
-
-  it('conserva LIBRE cuando el último estado conocido es LIBRE', () => {
-    const ultimoEstadoRegistrado = EstadoTurno.create('Libre');
-
-    const resumen = ResumenEstadoFinalEmpleado.create({
-      nombreEmpleado: 'Mario',
-      nombreUnidadOperativa: 'CACAO',
-      ultimoDiaConInformacion: 30,
-      ultimoEstadoRegistrado,
+      ultimoDiaConInformacion: 2,
+      ultimoEstadoRegistrado: EstadoTurno.create('Libre'),
       ultimoTurno: 'LIBRE',
-      ultimaAsignacionValida: ultimoEstadoRegistrado,
+      ultimaAsignacionValida: EstadoTurno.create('Libre'),
+      ultimaAsignacionOperativaValida: EstadoTurno.create('Turno B'),
     });
 
-    const decisor = new DecisorPrimerDiaContinuidadSimple();
+    const resultado = decisor.decide(resumen);
 
-    const estadoPrimerDia = decisor.decide(resumen);
-
-    expect(estadoPrimerDia.valor).toBe('LIBRE');
+    expect(resultado.valor).toBe('TURNO B');
   });
 
-  it('conserva FERIADO cuando el último estado conocido es FERIADO', () => {
-    const ultimoEstadoRegistrado = EstadoTurno.create('Feriado');
-
+  it('mantiene el comportamiento actual cuando el cierre no es LIBRE', () => {
     const resumen = ResumenEstadoFinalEmpleado.create({
-      nombreEmpleado: 'Luis',
-      nombreUnidadOperativa: 'CAJA CACAO',
-      ultimoDiaConInformacion: 30,
-      ultimoEstadoRegistrado,
-      ultimoTurno: 'FERIADO',
-      ultimaAsignacionValida: ultimoEstadoRegistrado,
-    });
-
-    const decisor = new DecisorPrimerDiaContinuidadSimple();
-
-    const estadoPrimerDia = decisor.decide(resumen);
-
-    expect(estadoPrimerDia.valor).toBe('FERIADO');
-  });
-
-  it('conserva VACACIONES cuando el último estado conocido es VACACIONES', () => {
-    const ultimoEstadoRegistrado = EstadoTurno.create('Vacaciones');
-
-    const resumen = ResumenEstadoFinalEmpleado.create({
-      nombreEmpleado: 'Julio',
+      nombreEmpleado: 'Joel',
       nombreUnidadOperativa: 'TRUCK STOP',
-      ultimoDiaConInformacion: 30,
-      ultimoEstadoRegistrado,
-      ultimoTurno: 'VACACIONES',
-      ultimaAsignacionValida: ultimoEstadoRegistrado,
+      ultimoDiaConInformacion: 1,
+      ultimoEstadoRegistrado: EstadoTurno.create('Turno A'),
+      ultimoTurno: 'TURNO A',
+      ultimaAsignacionValida: EstadoTurno.create('Turno A'),
+      ultimaAsignacionOperativaValida: EstadoTurno.create('Turno A'),
     });
 
-    const decisor = new DecisorPrimerDiaContinuidadSimple();
+    const resultado = decisor.decide(resumen);
 
-    const estadoPrimerDia = decisor.decide(resumen);
-
-    expect(estadoPrimerDia.valor).toBe('VACACIONES');
+    expect(resultado.valor).toBe('TURNO A');
   });
 
-  it('conserva OTRO cuando el último estado conocido es OTRO', () => {
-    const ultimoEstadoRegistrado = EstadoTurno.create('Capacitacion');
-
+  it('mantiene LIBRE cuando no existe asignación operativa válida', () => {
     const resumen = ResumenEstadoFinalEmpleado.create({
-      nombreEmpleado: 'Edwin',
-      nombreUnidadOperativa: 'CACAO',
-      ultimoDiaConInformacion: 30,
-      ultimoEstadoRegistrado,
-      ultimoTurno: 'CAPACITACION',
-      ultimaAsignacionValida: ultimoEstadoRegistrado,
+      nombreEmpleado: 'Joel',
+      nombreUnidadOperativa: 'TRUCK STOP',
+      ultimoDiaConInformacion: 2,
+      ultimoEstadoRegistrado: EstadoTurno.create('Libre'),
+      ultimoTurno: 'LIBRE',
+      ultimaAsignacionValida: EstadoTurno.create('Libre'),
+      ultimaAsignacionOperativaValida: null,
     });
 
-    const decisor = new DecisorPrimerDiaContinuidadSimple();
+    const resultado = decisor.decide(resumen);
 
-    const estadoPrimerDia = decisor.decide(resumen);
-
-    expect(estadoPrimerDia.valor).toBe('CAPACITACION');
+    expect(resultado.valor).toBe('LIBRE');
   });
 });
