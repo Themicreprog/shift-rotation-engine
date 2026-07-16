@@ -320,7 +320,7 @@ describe('PlanningEngine', () => {
       (empleado) => empleado.nombre === 'Lester',
     )!;
 
-    expect(edwinPista.estadoDelDia(1).valor).toBe('LIBRE');
+    expect(edwinPista.estadoDelDia(1).valor).toBe('OTRO');
     expect(edwinCaja.estadoDelDia(1).valor).toBe('TURNO A');
     expect(lester.estadoDelDia(1).valor).toBe('TURNO A');
     expect(resultado.cambios).toContain(
@@ -444,7 +444,7 @@ describe('PlanningEngine', () => {
     )!;
 
     expect(edwinPista.estadoDelDia(5).valor).toBe('LIBRE');
-    expect(edwinCaja.estadoDelDia(5).valor).toBe('LIBRE');
+    expect(edwinCaja.estadoDelDia(5).valor).toBe('OTRO');
     expect(celio.estadoDelDia(5).valor).toBe('TURNO A');
     expect(resultado.cambios).toContain(
       'Cobertura de Edwin cancelada en CACAO CAJA el día 5 para respetar su descanso o evento en CACAO PISTA.',

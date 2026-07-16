@@ -794,13 +794,26 @@ export class PlanificadorUnidadOperativa {
         const evento = eventosPorDia[indiceAbsoluto];
 
         if (evento) {
-          vacantes.push({
-            unidadOperativa,
-            dia: indiceAbsoluto + 1,
-            turno: turnoActual.valor as 'TURNO A' | 'TURNO B',
-            empleadoTitular: nombreEmpleado,
-            motivo: evento.tipo,
-          });
+          const estadoBaseDelDia = estadosBase[indiceAbsoluto];
+
+          // VACACIONES y FERIADO ya cuentan como descanso semanal. Cuando el
+          // evento coincide con el LIBRE que el empleado tenía programado, no
+          // existe una jornada que reemplazar: crear una vacante en ese día
+          // obligaba al comodín a trabajar siete días seguidos y generaba una
+          // cobertura artificialmente imposible. En los demás días sí se
+          // conserva la vacante del turno que el empleado habría trabajado.
+          if (
+            estadoBaseDelDia?.esAsignacionOperativa() ||
+            !this.esUnidadBomberos(unidadOperativa)
+          ) {
+            vacantes.push({
+              unidadOperativa,
+              dia: indiceAbsoluto + 1,
+              turno: turnoActual.valor as 'TURNO A' | 'TURNO B',
+              empleadoTitular: nombreEmpleado,
+              motivo: evento.tipo,
+            });
+          }
 
           estados.push(EstadoTurno.create(evento.tipo));
         } else {

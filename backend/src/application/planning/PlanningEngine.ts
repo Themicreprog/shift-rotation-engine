@@ -617,7 +617,7 @@ export class PlanningEngine {
           unidadPista,
           coordinacion.empleado,
           dia,
-          EstadoTurno.create('LIBRE'),
+          EstadoTurno.create('OTRO'),
         );
         cambiosCoordinacion.push(
           `Flexible ${coordinacion.empleado} transferido de ${coordinacion.unidadPista} a ${coordinacion.unidadCaja} el día ${dia}.`,
@@ -629,7 +629,7 @@ export class PlanningEngine {
         unidadCaja,
         coordinacion.empleado,
         dia,
-        EstadoTurno.create('LIBRE'),
+        EstadoTurno.create('OTRO'),
       );
       exclusionesCaja.set(dia, new Set([coordinacion.empleado]));
       const reemplazoCancelado = resultadoCaja.reemplazos.find(
