@@ -79,22 +79,22 @@ export class WeekDetector {
   ): DiaColumna[] {
     const columnasDias: DiaColumna[] = [];
 
-    for (
-      let columna = columnaInicio;
-      columna <= row.cellCount;
-      columna += 1
-    ) {
+    for (let columna = columnaInicio; columna <= row.cellCount; columna += 1) {
       const cell: Cell = row.getCell(columna);
       const texto = (cell.text ?? '').trim();
 
-      if (texto.length === 0) {
-        break;
+      if (!/\b\d{1,2}\s*\/\s*\d{1,2}(?:\s*\/\s*\d{2,4})?\b/.test(texto)) {
+        continue;
       }
 
       columnasDias.push({
         encabezadoTexto: texto,
         columna,
       });
+
+      if (columnasDias.length === 7) {
+        break;
+      }
     }
 
     return columnasDias;

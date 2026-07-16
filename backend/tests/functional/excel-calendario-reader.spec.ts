@@ -13,9 +13,9 @@ import type { Empleado } from '../../src/domain/Empleado.js';
 const fixturesDir = path.resolve(__dirname, '../fixtures');
 
 const archivos = [
-  'TURNOS-PISTA-Y-CAJA-JUNIO-2026.xlsx',        // Junio real
-  'TURNOS-PISTA-Y-CAJA-JULIO-2026-2.xlsx',      // Julio con fórmulas
-  'turnos-de-julio-pero-limpios-3.xlsx',        // Julio limpio sin fórmulas
+  'TURNOS-PISTA-Y-CAJA-JUNIO-2026.xlsx', // Junio real
+  'TURNOS-PISTA-Y-CAJA-JULIO-2026-2.xlsx', // Julio con fórmulas
+  'turnos-de-julio-pero-limpios-3.xlsx', // Julio limpio sin fórmulas
 ];
 
 async function cargarWorkbook(nombreArchivo: string): Promise<ExcelJS.Workbook> {
@@ -114,6 +114,119 @@ describe('ExcelCalendarioReader — validación funcional con Excel real', () =>
       // El calendario debe contener al menos un empleado y un día asignado
       expect(totalEmpleados).toBeGreaterThan(0);
       expect(totalDias).toBeGreaterThan(0);
+    }
+  });
+
+  it('lee solo las cuatro unidades de julio del archivo limpio sin corromper empleados ni dias', async () => {
+    const reader = new ExcelCalendarioReader();
+    const ruta = path.join(fixturesDir, 'turnos-de-julio-pero-limpios-3.xlsx');
+
+    const calendario = await reader.leerCalendario(ruta);
+    const nombresUnidades = calendario.unidadesOperativas.map((unidad) => unidad.nombre).sort();
+
+    expect(nombresUnidades).toEqual([
+      'CACAO CAJA',
+      'CACAO PISTA',
+      'TRUCK STOP CAJA',
+      'TRUCK STOP PISTA',
+    ]);
+
+    for (const unidad of calendario.unidadesOperativas) {
+      expect(unidad.cantidadEmpleados()).toBeGreaterThan(0);
+
+      for (const empleado of unidad.empleados) {
+        expect(empleado.nombre).not.toMatch(/^\d+$/);
+        expect(empleado.nombre).not.toBe('Celeo');
+        expect(empleado.nombre).not.toContain('(');
+        expect(empleado.totalDias()).toBe(33);
+
+        for (let dia = 1; dia <= 33; dia += 1) {
+          expect(() => empleado.estadoDelDia(dia)).not.toThrow();
+        }
+      }
+    }
+
+    expect(
+      calendario.buscarUnidadOperativa('CACAO PISTA')?.empleados.map(
+        (empleado) => empleado.nombre,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'Mario',
+        'Jose',
+        'Edwin',
+        'Rene',
+        'Luis D',
+        'Julio',
+        'Joel',
+      ]),
+    );
+    expect(
+      calendario.buscarUnidadOperativa('CACAO CAJA')?.empleados.map(
+        (empleado) => empleado.nombre,
+      ),
+    ).toEqual(expect.arrayContaining(['Natanael', 'Rony']));
+    expect(
+      calendario.buscarUnidadOperativa('TRUCK STOP CAJA')?.empleados.map(
+        (empleado) => empleado.nombre,
+      ),
+    ).toEqual(expect.arrayContaining(['Norlan', 'Derlin']));
+    expect(calendario.obtenerPeriodoOrigen()).toMatchObject({
+      mes: 7,
+      anio: 2026,
+      fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
+      fechaFin: new Date('2026-08-02T00:00:00.000Z'),
+    });
+  });
+
+  it('usa la ultima fecha segura comun cuando una hoja termina antes', async () => {
+    const workbook = await cargarWorkbook(
+      'turnos-de-julio-pero-limpios-3.xlsx',
+    );
+    const classifier = new SheetClassifier();
+    const detector = new WeekDetector();
+    const hojaRecortada = workbook.worksheets.find(
+      (worksheet) =>
+        classifier.clasificar(worksheet) !== 'AUXILIAR' &&
+        detector
+          .detect(worksheet)
+          .some((semana) =>
+            semana.columnasDias.some((dia) =>
+              /\b2\s*\/\s*8\b/.test(dia.encabezadoTexto),
+            ),
+          ),
+    );
+
+    expect(hojaRecortada).toBeDefined();
+
+    let encabezadosRetirados = 0;
+
+    for (const semana of detector.detect(hojaRecortada!)) {
+      for (const dia of semana.columnasDias) {
+        if (/\b2\s*\/\s*8\b/.test(dia.encabezadoTexto)) {
+          hojaRecortada!
+            .getRow(semana.filaEncabezado)
+            .getCell(dia.columna).value = null;
+          encabezadosRetirados += 1;
+        }
+      }
+    }
+
+    expect(encabezadosRetirados).toBeGreaterThan(0);
+
+    const reader = new ExcelCalendarioReader({
+      cargar: async () => workbook,
+    });
+    const calendario = await reader.leerCalendario('ruta-ignorada.xlsx');
+
+    expect(calendario.obtenerPeriodoOrigen()?.fechaFin).toEqual(
+      new Date('2026-08-01T00:00:00.000Z'),
+    );
+
+    for (const unidad of calendario.unidadesOperativas) {
+      for (const empleado of unidad.empleados) {
+        expect(empleado.totalDias()).toBe(32);
+      }
     }
   });
 });

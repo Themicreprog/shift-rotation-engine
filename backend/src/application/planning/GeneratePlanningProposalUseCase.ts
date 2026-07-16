@@ -1,5 +1,5 @@
-import { RotationResult } from '../../domain/rotation/RotationResult.js';
 import { PlanningEngine } from './PlanningEngine.js';
+import { ResultadoPlanificacion } from './ResultadoPlanificacion.js';
 import { SolicitudPlanificacion } from './SolicitudPlanificacion.js';
 
 export class GeneratePlanningProposalUseCase {
@@ -7,7 +7,7 @@ export class GeneratePlanningProposalUseCase {
     private readonly planningEngine: PlanningEngine,
   ) {}
 
-  public execute(solicitud: SolicitudPlanificacion): RotationResult {
+  public execute(solicitud: SolicitudPlanificacion): ResultadoPlanificacion {
     return this.planningEngine.execute(solicitud);
   }
 }

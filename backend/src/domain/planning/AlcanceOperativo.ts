@@ -14,8 +14,12 @@ export class AlcanceOperativo {
       throw new Error('AlcanceOperativo debe incluir al menos una unidad operativa.');
     }
 
+    const clavesNormalizadas = unidadesNormalizadas.map((unidad) =>
+      unidad.replace(/\s+/g, ' ').toUpperCase(),
+    );
     const repetidas = unidadesNormalizadas.filter(
-      (unidad, index, unidades) => unidades.indexOf(unidad) !== index,
+      (_unidad, index) =>
+        clavesNormalizadas.indexOf(clavesNormalizadas[index]!) !== index,
     );
 
     if (repetidas.length > 0) {

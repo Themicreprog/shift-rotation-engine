@@ -1,6 +1,8 @@
 import { EstadoTurno } from '../EstadoTurno.js';
 
 const DIAS_POR_SEMANA = 7;
+const TURNO_A = 'TURNO A';
+const TURNO_B = 'TURNO B';
 
 export class SemanaLaboral {
   private constructor(
@@ -28,12 +30,20 @@ export class SemanaLaboral {
     }
 
     const estados: EstadoTurno[] = [];
+    const turnoDespuesDelDescanso = EstadoTurno.create(
+      turnoOperativo.valor === TURNO_A ? TURNO_B : TURNO_A,
+    );
 
     for (let dia = 0; dia < DIAS_POR_SEMANA; dia += 1) {
       if (dia === posicionLibre) {
         estados.push(EstadoTurno.create('LIBRE'));
       } else {
-        estados.push(EstadoTurno.create(turnoOperativo.valor));
+        const turnoDelDia =
+          dia < posicionLibre
+            ? turnoOperativo
+            : turnoDespuesDelDescanso;
+
+        estados.push(EstadoTurno.create(turnoDelDia.valor));
       }
     }
 

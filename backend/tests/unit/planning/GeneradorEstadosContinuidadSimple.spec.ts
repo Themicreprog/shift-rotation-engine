@@ -60,6 +60,42 @@ describe('GeneradorRotacionSemanal', () => {
     ]);
   });
 
+  it('cambia el turno justo después de un descanso intermedio y lo mantiene hasta el siguiente', () => {
+    const resultado = generador.generar(
+      EstadoTurno.create('TURNO B'),
+      17,
+      2,
+    );
+    const valores = resultado.map((estado) => estado.valor);
+
+    expect(valores).toEqual([
+      'TURNO B',
+      'TURNO B',
+      'LIBRE',
+      'TURNO A',
+      'TURNO A',
+      'TURNO A',
+      'TURNO A',
+      'TURNO A',
+      'TURNO A',
+      'LIBRE',
+      'TURNO B',
+      'TURNO B',
+      'TURNO B',
+      'TURNO B',
+      'TURNO B',
+      'TURNO B',
+      'LIBRE',
+    ]);
+
+    expect(
+      valores.some(
+        (estado, index) =>
+          estado === 'TURNO B' && valores[index + 1] === 'TURNO A',
+      ),
+    ).toBe(false);
+  });
+
   it.each([
     ['VACACIONES'],
     ['FERIADO'],

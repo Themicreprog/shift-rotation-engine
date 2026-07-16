@@ -16,11 +16,14 @@ export class UnidadOperativa {
       throw new Error('UnidadOperativa.nombre no puede estar vacío.');
     }
 
+    const clavesEmpleados = input.empleados.map((empleado) =>
+      empleado.nombre.trim().replace(/\s+/g, ' ').toUpperCase(),
+    );
     const nombresRepetidos = input.empleados
       .map((empleado) => empleado.nombre)
       .filter(
-        (nombreEmpleado, index, nombres) =>
-          nombres.indexOf(nombreEmpleado) !== index,
+        (_nombreEmpleado, index) =>
+          clavesEmpleados.indexOf(clavesEmpleados[index]!) !== index,
       );
 
     if (nombresRepetidos.length > 0) {

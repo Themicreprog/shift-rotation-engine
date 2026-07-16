@@ -1,20 +1,16 @@
 import { Empleado } from '../../domain/Empleado.js';
 
 export class DistribuidorDiaLibre {
-  /**
-   * Temporalmente todos los empleados descansan el último día
-   * de la semana (posición 6).
-   *
-   * Más adelante este algoritmo distribuirá automáticamente
-   * los días libres respetando cobertura, comodines y vacaciones.
-   */
   public distribuir(
     empleados: ReadonlyArray<Empleado>,
   ): ReadonlyMap<string, number> {
     const distribucion = new Map<string, number>();
 
-    empleados.forEach((empleado) => {
-      distribucion.set(empleado.nombre, 6);
+    empleados.forEach((empleado, indice) => {
+      // El primer empleado conserva el domingo como descanso para mantener
+      // continuidad con los calendarios existentes; los demás se reparten
+      // hacia atrás durante la semana de forma determinista.
+      distribucion.set(empleado.nombre, (6 - (indice % 7) + 7) % 7);
     });
 
     return distribucion;

@@ -7,7 +7,7 @@ import { ResumenEstadoFinalEmpleado } from '../../../src/domain/planning/Resumen
 describe('DecisorPrimerDiaContinuidadSimple', () => {
   const decisor = new DecisorPrimerDiaContinuidadSimple();
 
-  it('usa la última asignación operativa válida cuando el cierre es LIBRE', () => {
+  it('cambia de turno cuando el período anterior termina en LIBRE', () => {
     const resumen = ResumenEstadoFinalEmpleado.create({
       nombreEmpleado: 'Joel',
       nombreUnidadOperativa: 'TRUCK STOP',
@@ -19,7 +19,7 @@ describe('DecisorPrimerDiaContinuidadSimple', () => {
 
     const resultado = decisor.decide(resumen);
 
-    expect(resultado.valor).toBe('TURNO B');
+    expect(resultado.valor).toBe('TURNO A');
   });
 
   it('mantiene el comportamiento actual cuando el cierre no es LIBRE', () => {
@@ -51,4 +51,20 @@ describe('DecisorPrimerDiaContinuidadSimple', () => {
 
     expect(resultado.valor).toBe('LIBRE');
   });
+
+  it.each(['Vacaciones', 'Feriado'])(
+    'retoma el último turno operativo después de %s',
+    (estadoFinal: string) => {
+      const resumen = ResumenEstadoFinalEmpleado.create({
+        nombreEmpleado: 'Joel',
+        nombreUnidadOperativa: 'TRUCK STOP',
+        ultimoDiaConInformacion: 2,
+        ultimoEstadoRegistrado: EstadoTurno.create(estadoFinal),
+        ultimoTurno: estadoFinal,
+        ultimaAsignacionOperativaValida: EstadoTurno.create('Turno B'),
+      });
+
+      expect(decisor.decide(resumen).valor).toBe('TURNO B');
+    },
+  );
 });

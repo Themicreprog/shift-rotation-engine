@@ -6,9 +6,10 @@ import { DecisorPrimerDiaContinuidadSimple } from '../../../src/application/plan
 import { DistribuidorDiaLibre } from '../../../src/application/planning/DistribuidorDiaLibre.js';
 import { GeneradorRotacionSemanal } from '../../../src/application/planning/GeneradorRotacionSemanal.js';
 import { PlanificacionInputValidator } from '../../../src/application/planning/PlanificacionInputValidator.js';
+import { PlanificadorUnidadOperativa } from '../../../src/application/planning/PlanificadorUnidadOperativa.js';
 import { PlanningEngine } from '../../../src/application/planning/PlanningEngine.js';
-import { ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa } from '../../../src/application/planning/ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa.js';
 import { SolicitudPlanificacion } from '../../../src/application/planning/SolicitudPlanificacion.js';
+import { ValidadorCobertura } from '../../../src/application/planning/ValidadorCobertura.js';
 import { Calendario } from '../../../src/domain/Calendario.js';
 import { Empleado } from '../../../src/domain/Empleado.js';
 import { EstadoTurno } from '../../../src/domain/EstadoTurno.js';
@@ -43,11 +44,12 @@ describe('PlanningEngine', () => {
       new AnalizadorEstadoFinalCalendario(
         new AnalizadorEstadoFinalEmpleado(),
       ),
-      new ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa(
+      new PlanificadorUnidadOperativa(
         new AnalizadorEstadoFinalEmpleado(),
         new DecisorPrimerDiaContinuidadSimple(),
         new GeneradorRotacionSemanal(),
         new DistribuidorDiaLibre(),
+        new ValidadorCobertura(),
       ),
     );
 
@@ -108,18 +110,19 @@ describe('PlanningEngine', () => {
       new AnalizadorEstadoFinalCalendario(
         new AnalizadorEstadoFinalEmpleado(),
       ),
-      new ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa(
+      new PlanificadorUnidadOperativa(
         new AnalizadorEstadoFinalEmpleado(),
         new DecisorPrimerDiaContinuidadSimple(),
         new GeneradorRotacionSemanal(),
         new DistribuidorDiaLibre(),
+        new ValidadorCobertura(),
       ),
     );
 
     const resultado = engine.execute(solicitud);
 
     expect(resultado.cambios).toEqual([]);
-    expect(resultado.advertencias).toEqual([]);
+    expect(resultado.advertencias).not.toEqual([]);
     expect(resultado.conflictos).toEqual([]);
 
     expect(resultado.calendario).not.toBe(calendario);
@@ -211,11 +214,12 @@ describe('PlanningEngine', () => {
       new AnalizadorEstadoFinalCalendario(
         new AnalizadorEstadoFinalEmpleado(),
       ),
-      new ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa(
+      new PlanificadorUnidadOperativa(
         new AnalizadorEstadoFinalEmpleado(),
         new DecisorPrimerDiaContinuidadSimple(),
         new GeneradorRotacionSemanal(),
         new DistribuidorDiaLibre(),
+        new ValidadorCobertura(),
       ),
     );
 

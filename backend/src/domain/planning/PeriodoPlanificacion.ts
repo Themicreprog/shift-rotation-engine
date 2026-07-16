@@ -27,24 +27,35 @@ export class PeriodoPlanificacion {
 
   public totalDias(): number {
     const milisegundosPorDia = 24 * 60 * 60 * 1000;
-    const diferencia = this.inicioNormalizado().getTime() - this.finNormalizado().getTime();
+    const diferencia = this.finNormalizado().getTime() - this.inicioNormalizado().getTime();
 
-    return Math.abs(Math.floor(diferencia / milisegundosPorDia)) + 1;
+    return Math.floor(diferencia / milisegundosPorDia) + 1;
+  }
+
+  public fechaDelDia(dia: number): Date {
+    if (!Number.isInteger(dia) || dia < 1 || dia > this.totalDias()) {
+      throw new Error('El día solicitado está fuera del período de planificación.');
+    }
+
+    const fecha = this.inicioNormalizado();
+    fecha.setUTCDate(fecha.getUTCDate() + dia - 1);
+
+    return fecha;
   }
 
   private inicioNormalizado(): Date {
-    return new Date(
-      this.fechaInicio.getFullYear(),
-      this.fechaInicio.getMonth(),
-      this.fechaInicio.getDate(),
-    );
+    return new Date(Date.UTC(
+      this.fechaInicio.getUTCFullYear(),
+      this.fechaInicio.getUTCMonth(),
+      this.fechaInicio.getUTCDate(),
+    ));
   }
 
   private finNormalizado(): Date {
-    return new Date(
-      this.fechaFin.getFullYear(),
-      this.fechaFin.getMonth(),
-      this.fechaFin.getDate(),
-    );
+    return new Date(Date.UTC(
+      this.fechaFin.getUTCFullYear(),
+      this.fechaFin.getUTCMonth(),
+      this.fechaFin.getUTCDate(),
+    ));
   }
 }

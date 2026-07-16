@@ -7,9 +7,10 @@ import { DistribuidorDiaLibre } from '../../../src/application/planning/Distribu
 import { GeneradorRotacionSemanal } from '../../../src/application/planning/GeneradorRotacionSemanal.js';
 import { GeneratePlanningProposalUseCase } from '../../../src/application/planning/GeneratePlanningProposalUseCase.js';
 import { PlanificacionInputValidator } from '../../../src/application/planning/PlanificacionInputValidator.js';
+import { PlanificadorUnidadOperativa } from '../../../src/application/planning/PlanificadorUnidadOperativa.js';
 import { PlanningEngine } from '../../../src/application/planning/PlanningEngine.js';
-import { ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa } from '../../../src/application/planning/ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa.js';
 import { SolicitudPlanificacion } from '../../../src/application/planning/SolicitudPlanificacion.js';
+import { ValidadorCobertura } from '../../../src/application/planning/ValidadorCobertura.js';
 import { Calendario } from '../../../src/domain/Calendario.js';
 import { Empleado } from '../../../src/domain/Empleado.js';
 import { EstadoTurno } from '../../../src/domain/EstadoTurno.js';
@@ -51,11 +52,12 @@ describe('GeneratePlanningProposalUseCase', () => {
         new AnalizadorEstadoFinalCalendario(
           new AnalizadorEstadoFinalEmpleado(),
         ),
-        new ResolverPrimerDiaSiguientePeriodoParaUnidadOperativa(
+        new PlanificadorUnidadOperativa(
           new AnalizadorEstadoFinalEmpleado(),
           new DecisorPrimerDiaContinuidadSimple(),
           new GeneradorRotacionSemanal(),
           new DistribuidorDiaLibre(),
+          new ValidadorCobertura(),
         ),
       ),
     );
@@ -64,7 +66,7 @@ describe('GeneratePlanningProposalUseCase', () => {
 
     expect(result).toBeInstanceOf(RotationResult);
     expect(result.cambios).toEqual([]);
-    expect(result.advertencias).toEqual([]);
+    expect(result.advertencias).not.toEqual([]);
     expect(result.conflictos).toEqual([]);
     expect(result.calendario.nombre).toBe(
       'PLANIFICACION-2026-07-COMPLETO',

@@ -1,6 +1,6 @@
 // src/infrastructure/excel/WorkbookLoader.ts
 
-import * as ExcelJS from 'exceljs';
+import ExcelJS from 'exceljs';
 
 export class WorkbookLoader {
   public async cargar(rutaArchivo: string): Promise<ExcelJS.Workbook> {

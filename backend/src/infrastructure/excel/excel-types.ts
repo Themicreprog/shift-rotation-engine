@@ -9,6 +9,14 @@ export interface DiaColumna {
   columna: number;
 }
 
+export interface FechaColumnaExcel {
+  columna: number;
+  dia: number;
+  mes: number;
+  anio: number;
+  fecha: string;
+}
+
 export type TipoBloqueExcel =
   | 'TURNO_A'
   | 'TURNO_B'
@@ -26,8 +34,17 @@ export interface WeekLayout {
   columnasDias: DiaColumna[];
 }
 
+export interface PeriodoExcel {
+  mes: number;
+  anio: number;
+}
+
 export interface RawAssignment {
   empleadoNombre: string;
-  estadoTexto: string;      // texto del estado (Turno A, Libre, Vacaciones, etc.)
-  semanaEtiqueta: string;   // ej. "SEMANA 1"
+  estadoTexto: string; // texto del estado (Turno A, Libre, Vacaciones, etc.)
+  semanaEtiqueta: string; // ej. "SEMANA 1"
+  dia: number;
+  mes: number;
+  anio: number;
+  fecha: string; // ISO local del calendario: YYYY-MM-DD
 }
