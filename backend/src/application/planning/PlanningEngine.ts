@@ -578,7 +578,13 @@ export class PlanningEngine {
         coordinacion.empleado,
       )?.estadoDelDia(dia);
 
-      if (estadoPista?.esAsignacionOperativa()) {
+      if (
+        estadoPista?.esAsignacionOperativa() &&
+        (this.puedeCederFlexible(unidadPista, dia, estadoPista.valor) ||
+          solicitud.comodines.empleadosDeUnidad(
+            coordinacion.unidadPista,
+          ).length > 0)
+      ) {
         const reemplazoPistaCancelado = resultadoPista.reemplazos.find(
           (reemplazo) =>
             reemplazo.dia === dia &&
@@ -658,7 +664,9 @@ export class PlanningEngine {
         `Flexible ${empleadoCaja.nombre} reasignado a ${estadoCaja.valor} el día ${dia} en ${unidadCaja.nombre}.`,
       );
       cambiosCoordinacion.push(
-        `Cobertura de ${coordinacion.empleado} cancelada en ${coordinacion.unidadCaja} el día ${dia} para respetar su descanso o evento en ${coordinacion.unidadPista}.`,
+        estadoPista?.esAsignacionOperativa()
+          ? `Cobertura de ${coordinacion.empleado} cancelada en ${coordinacion.unidadCaja} el día ${dia} porque ${coordinacion.unidadPista} no puede cederlo sin bajar de 3 bomberos por turno.`
+          : `Cobertura de ${coordinacion.empleado} cancelada en ${coordinacion.unidadCaja} el día ${dia} para respetar su descanso o evento en ${coordinacion.unidadPista}.`,
       );
     }
 
@@ -707,6 +715,18 @@ export class PlanningEngine {
         ],
       },
     };
+  }
+
+  private puedeCederFlexible(
+    unidadPista: UnidadOperativa,
+    dia: number,
+    turno: string,
+  ): boolean {
+    const disponiblesEnTurno = unidadPista.empleados.filter(
+      (empleado) => empleado.estadoDelDia(dia).valor === turno,
+    ).length;
+
+    return disponiblesEnTurno - 1 >= 3;
   }
 
   private reemplazarEstado(

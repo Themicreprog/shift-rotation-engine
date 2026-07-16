@@ -100,8 +100,25 @@ export class PlanificadorUnidadOperativa {
           ),
       ),
     );
-    const distribucionDiasLibres =
-      this.distribuidorDiaLibre.distribuir(empleadosEnRotacion);
+    const turnosIniciales = this.obtenerTurnosIniciales(
+      unidadOperativaOrigen,
+      empleadosEnRotacion,
+    );
+    const limitesDescanso = this.obtenerLimitesDescanso(empleadosEnRotacion);
+    const distribucionDiasLibres = this.esUnidadBomberos(
+      unidadOperativaOrigen.nombre,
+    )
+      ? this.distribuidorDiaLibre.distribuirCoordinado(
+          empleadosEnRotacion,
+          turnosIniciales,
+          3,
+          limitesDescanso,
+        )
+      : this.distribuidorDiaLibre.distribuirConContinuidad(
+          empleadosEnRotacion,
+          limitesDescanso,
+          turnosIniciales,
+        );
 
     // El orden y los nombres recibidos desde el calendario son la fuente de
     // verdad: así una sustitución manual no queda reemplazada por una lista
@@ -322,7 +339,13 @@ export class PlanificadorUnidadOperativa {
           return false;
         }
 
-        if (estados?.[dia - 1]?.valor !== 'LIBRE') {
+        if (!estados) {
+          return false;
+        }
+
+        const estadoReserva = estados[dia - 1]?.valor;
+
+        if (estadoReserva !== 'LIBRE' && estadoReserva !== 'OTRO') {
           return false;
         }
 
@@ -547,6 +570,50 @@ export class PlanificadorUnidadOperativa {
       .trim();
   }
 
+
+  private obtenerTurnosIniciales(
+    unidadOperativa: UnidadOperativa,
+    empleados: ReadonlyArray<Empleado>,
+  ): ReadonlyMap<string, EstadoTurno> {
+    return new Map(
+      empleados.map((empleado) => {
+        const resumen = this.analizadorEstadoFinalEmpleado.analyze(
+          unidadOperativa,
+          empleado,
+        );
+        const estadoCalculado = this.decisorPrimerDiaContinuidadSimple.decide(
+          resumen,
+        );
+
+        // La distribución coordinada debe usar exactamente el turno con el
+        // que el empleado iniciará el período. Si el último día fue LIBRE,
+        // el decisor ya aplica el cambio al turno opuesto. Usar aquí la
+        // última asignación operativa anterior descoordina el grupo: el
+        // distribuidor calcula los descansos con un turno, pero el generador
+        // empieza al empleado en otro. Ese desfase era el origen de los
+        // patrones 1/5 y 2/4 observados en pista.
+        const mantieneTurnoFijo = this.esEmpleadoFijoDeUnidad(
+          unidadOperativa.nombre,
+          empleado.nombre,
+        );
+        const estado =
+          mantieneTurnoFijo && resumen.ultimaAsignacionOperativaValida !== null
+            ? resumen.ultimaAsignacionOperativaValida
+            : estadoCalculado.esAsignacionOperativa()
+              ? estadoCalculado
+              : resumen.ultimaAsignacionOperativaValida ?? estadoCalculado;
+
+        return [empleado.nombre, estado] as const;
+      }),
+    );
+  }
+
+  private esUnidadBomberos(nombreUnidadOperativa: string): boolean {
+    const nombre = nombreUnidadOperativa.trim().toUpperCase();
+
+    return !nombre.includes('CAJA') && !nombre.includes('CAJER');
+  }
+
   private ordenarEmpleadosParaRotacion(
     nombreUnidadOperativa: string,
     empleados: ReadonlyArray<Empleado>,
@@ -618,14 +685,9 @@ export class PlanificadorUnidadOperativa {
         ? resumen.ultimaAsignacionOperativaValida
         : estadoInicialCalculado;
 
-    const posicionLibreDistribuido =
-      this.distribuidorDiaLibre.obtenerDiaLibre(
-        empleadoOrigen.nombre,
-        distribucionDiasLibres,
-      );
-    const posicionLibre = this.ajustarPosicionDescansoPorContinuidad(
-      empleadoOrigen,
-      posicionLibreDistribuido,
+    const posicionLibre = this.distribuidorDiaLibre.obtenerDiaLibre(
+      empleadoOrigen.nombre,
+      distribucionDiasLibres,
     );
 
     const planificacion = this.generarEstadosConEventos(
@@ -818,30 +880,27 @@ export class PlanificadorUnidadOperativa {
     );
   }
 
-  private ajustarPosicionDescansoPorContinuidad(
-    empleadoOrigen: Empleado,
-    posicionLibreDistribuido: number,
-  ): number {
-    if (empleadoOrigen.totalDias() < 7) {
-      return posicionLibreDistribuido;
-    }
+  private obtenerLimitesDescanso(
+    empleados: ReadonlyArray<Empleado>,
+  ): ReadonlyMap<string, number> {
+    return new Map(
+      empleados.map((empleado) => {
+        let diasOperativosConsecutivos = 0;
 
-    let diasOperativosConsecutivos = 0;
+        for (let dia = empleado.totalDias(); dia >= 1; dia -= 1) {
+          if (!empleado.estadoDelDia(dia).esAsignacionOperativa()) {
+            break;
+          }
 
-    for (let dia = empleadoOrigen.totalDias(); dia >= 1; dia -= 1) {
-      if (!empleadoOrigen.estadoDelDia(dia).esAsignacionOperativa()) {
-        break;
-      }
+          diasOperativosConsecutivos += 1;
+        }
 
-      diasOperativosConsecutivos += 1;
-    }
-
-    const ultimaPosicionSegura = Math.max(
-      0,
-      6 - diasOperativosConsecutivos,
+        return [
+          empleado.nombre,
+          Math.max(0, 6 - diasOperativosConsecutivos),
+        ] as const;
+      }),
     );
-
-    return Math.min(posicionLibreDistribuido, ultimaPosicionSegura);
   }
 
   private planificarComodin(
@@ -852,7 +911,7 @@ export class PlanificadorUnidadOperativa {
   ): Empleado {
     const estados = Array.from(
       { length: periodoDestino.totalDias() },
-      () => EstadoTurno.create('LIBRE'),
+      () => EstadoTurno.create('OTRO'),
     );
 
     const estadosConEventos = estados.map((estado, indice) => {

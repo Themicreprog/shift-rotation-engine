@@ -315,7 +315,7 @@ describe('PlanificadorUnidadOperativa', () => {
     );
 
     expect(edwin?.estadoDelDia(1).valor).toBe('TURNO A');
-    expect(celio?.estadoDelDia(1).valor).toBe('LIBRE');
+    expect(celio?.estadoDelDia(1).valor).toBe('OTRO');
     expect(resultado.cambios).toContain(
       'Flexible Edwin reasignado a TURNO A el día 1 en CACAO CAJA.',
     );
@@ -418,7 +418,7 @@ describe('PlanificadorUnidadOperativa', () => {
       resultado.unidadOperativa.empleados
         .find((empleado) => empleado.nombre === 'Edwin')
         ?.estadoDelDia(1).valor,
-    ).toBe('LIBRE');
+    ).toBe('OTRO');
     expect(resultado.reemplazos).toContainEqual(
       expect.objectContaining({
         empleadoTitular: 'Natanael',
@@ -608,7 +608,7 @@ describe('PlanificadorUnidadOperativa', () => {
       (empleado) => empleado.nombre === 'Edwin',
     );
 
-    expect(edwin?.estadoDelDia(1).valor).toBe('LIBRE');
+    expect(edwin?.estadoDelDia(1).valor).toBe('OTRO');
     expect(resultado.cambios).toEqual([]);
   });
 
@@ -745,7 +745,7 @@ describe('PlanificadorUnidadOperativa', () => {
     ]);
   });
 
-  it('reparte descansos de CACAO PISTA siguiendo el orden base real', () => {
+  it('coordina los descansos de bomberos sin bajar de 3 por turno', () => {
     const planificador = new PlanificadorUnidadOperativa(
       new AnalizadorEstadoFinalEmpleado(),
       new DecisorPrimerDiaContinuidadSimple(),
@@ -753,14 +753,16 @@ describe('PlanificadorUnidadOperativa', () => {
       new DistribuidorDiaLibre(),
       new ValidadorCobertura(),
     );
+    const nombres = ['Jose', 'Mario', 'Edwin', 'Rene', 'Luis D', 'Julio', 'Joel'];
     const unidad = UnidadOperativa.create({
       nombre: 'CACAO PISTA',
-      empleados: ['Joel', 'Rene', 'Jose', 'Julio', 'Edwin', 'Mario', 'Luis D'].map(
-        (nombre) =>
-          Empleado.create({
-            nombre,
-            estadosPorDia: [EstadoTurno.create('TURNO A')],
-          }),
+      empleados: nombres.map((nombre, indice) =>
+        Empleado.create({
+          nombre,
+          estadosPorDia: [
+            EstadoTurno.create(indice < 4 ? 'TURNO A' : 'TURNO B'),
+          ],
+        }),
       ),
     });
 
@@ -771,28 +773,28 @@ describe('PlanificadorUnidadOperativa', () => {
         fechaFin: new Date('2026-07-07T00:00:00.000Z'),
       }),
     );
-    const diaLibrePorEmpleado = Object.fromEntries(
-      resultado.empleados.map((empleado) => [
-        empleado.nombre,
-        Array.from(
-          { length: 7 },
-          (_, indice) => empleado.estadoDelDia(indice + 1).valor,
-        ).findIndex((estado) => estado === 'LIBRE') + 1,
-      ]),
-    );
 
-    expect(diaLibrePorEmpleado).toEqual({
-      Joel: 1,
-      Rene: 4,
-      Jose: 7,
-      Julio: 2,
-      Edwin: 5,
-      Mario: 6,
-      'Luis D': 3,
-    });
+    for (let dia = 1; dia <= 7; dia += 1) {
+      const estados = resultado.empleados.map(
+        (empleado) => empleado.estadoDelDia(dia).valor,
+      );
+
+      expect(estados.filter((estado) => estado === 'TURNO A')).toHaveLength(3);
+      expect(estados.filter((estado) => estado === 'TURNO B')).toHaveLength(3);
+      expect(estados.filter((estado) => estado === 'LIBRE')).toHaveLength(1);
+    }
+
+    for (const empleado of resultado.empleados) {
+      const descansos = Array.from(
+        { length: 7 },
+        (_, indice) => empleado.estadoDelDia(indice + 1).valor,
+      ).filter((estado) => estado === 'LIBRE');
+
+      expect(descansos).toHaveLength(1);
+    }
   });
 
-  it('garantiza descanso al comodín aunque persista el faltante', () => {
+  it('mantiene al comodín fuera de rotación después de seis coberturas', () => {
     const planificador = new PlanificadorUnidadOperativa(
       new AnalizadorEstadoFinalEmpleado(),
       new DecisorPrimerDiaContinuidadSimple(),
@@ -853,7 +855,7 @@ describe('PlanificadorUnidadOperativa', () => {
       'TURNO A',
       'TURNO A',
       'TURNO A',
-      'LIBRE',
+      'OTRO',
     ]);
     expect(resultado.incidenciasDescanso).toEqual([]);
     expect(resultado.incidenciasCobertura).toContainEqual({
@@ -910,7 +912,7 @@ describe('PlanificadorUnidadOperativa', () => {
       resultado.unidadOperativa.empleados
         .find((empleado) => empleado.nombre === 'Celio')
         ?.estadoDelDia(1).valor,
-    ).toBe('LIBRE');
+    ).toBe('OTRO');
     expect(resultado.incidenciasCobertura).toHaveLength(2);
   });
 });

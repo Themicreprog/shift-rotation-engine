@@ -19,4 +19,30 @@ describe('DistribuidorDiaLibre', () => {
       0, 1, 2, 3, 4, 5, 6,
     ]);
   });
+
+  it('escalona caja para que el turno A descanse antes que el turno B', () => {
+    const cajeroA = Empleado.create({
+      nombre: 'Norlan',
+      estadosPorDia: [EstadoTurno.create('TURNO A')],
+    });
+    const cajeroB = Empleado.create({
+      nombre: 'Derlin',
+      estadosPorDia: [EstadoTurno.create('TURNO B')],
+    });
+    const distribucion = new DistribuidorDiaLibre().distribuirConContinuidad(
+      [cajeroB, cajeroA],
+      new Map([
+        ['Norlan', 6],
+        ['Derlin', 5],
+      ]),
+      new Map([
+        ['Norlan', EstadoTurno.create('TURNO A')],
+        ['Derlin', EstadoTurno.create('TURNO B')],
+      ]),
+    );
+
+    expect(distribucion.get('Norlan')).toBeLessThan(
+      distribucion.get('Derlin')!,
+    );
+  });
 });
