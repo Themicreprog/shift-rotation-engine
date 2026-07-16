@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import ExcelJS from 'exceljs';
-import type { CellValue, RichText } from 'exceljs';
+import type { CellValue, RichText, Worksheet } from 'exceljs';
 import { describe, expect, it } from 'vitest';
 
 import { Calendario } from '../../src/domain/Calendario.js';
@@ -82,6 +82,13 @@ function crearCalendario(
   return calendario;
 }
 
+function bufferComoArrayBuffer(buffer: Buffer): ArrayBuffer {
+  return buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength,
+  ) as ArrayBuffer;
+}
+
 function contarFormulas(workbook: ExcelJS.Workbook): number {
   let formulas = 0;
 
@@ -131,12 +138,32 @@ function obtenerRichText(valor: CellValue): RichText[] {
   return valor.richText;
 }
 
-describe('ExcelCalendarioWriter con plantilla real', () => {
-  it('genera un Buffer limpio conservando las cuatro hojas, estados y formato', async () => {
-    const plantilla = new ExcelJS.Workbook();
-    await plantilla.xlsx.readFile(rutaPlantilla);
-    const anchoOriginal = plantilla.getWorksheet('CACAO C1')?.getColumn(5).width;
+function buscarCeldaPorTexto(worksheet: Worksheet, texto: string): ExcelJS.Cell | undefined {
+  let encontrada: ExcelJS.Cell | undefined;
 
+  worksheet.eachRow({ includeEmpty: false }, (row) => {
+    row.eachCell({ includeEmpty: false }, (cell) => {
+      if (cell.text === texto) encontrada = cell;
+    });
+  });
+
+  return encontrada;
+}
+
+function textosDeHoja(worksheet: Worksheet): string[] {
+  const textos: string[] = [];
+
+  worksheet.eachRow({ includeEmpty: false }, (row) => {
+    row.eachCell({ includeEmpty: false }, (cell) => {
+      if (cell.text.trim().length > 0) textos.push(cell.text);
+    });
+  });
+
+  return textos;
+}
+
+describe('ExcelCalendarioWriter con diseño limpio propio', () => {
+  it('genera un Buffer limpio con las cuatro hojas reales, sin depender del layout viejo', async () => {
     const writer = new ExcelCalendarioWriter();
     const buffer = await writer.escribirCalendario(crearCalendario(), {
       rutaPlantilla,
@@ -168,11 +195,7 @@ describe('ExcelCalendarioWriter con plantilla real', () => {
     expect(buffer.length).toBeGreaterThan(0);
 
     const resultado = new ExcelJS.Workbook();
-    const contenido = buffer.buffer.slice(
-      buffer.byteOffset,
-      buffer.byteOffset + buffer.byteLength,
-    ) as ArrayBuffer;
-    await resultado.xlsx.load(contenido);
+    await resultado.xlsx.load(bufferComoArrayBuffer(buffer));
 
     expect(resultado.worksheets.map(({ name }) => name)).toEqual([
       'CACAO C1',
@@ -180,7 +203,8 @@ describe('ExcelCalendarioWriter con plantilla real', () => {
       'TRUCK STOP',
       'CAJA TRUCK STOP',
     ]);
-    expect(resultado.getWorksheet('CACAO 1')).toBeUndefined();
+    expect(resultado.getWorksheet('PISTA')).toBeUndefined();
+    expect(resultado.getWorksheet('CACAO PISTA')).toBeUndefined();
     expect(contarFormulas(resultado)).toBe(0);
     expect(contarNotas(resultado)).toBe(0);
 
@@ -189,17 +213,29 @@ describe('ExcelCalendarioWriter con plantilla real', () => {
     const truckPista = resultado.getWorksheet('TRUCK STOP');
     const truckCaja = resultado.getWorksheet('CAJA TRUCK STOP');
 
-    expect(cacaoPista?.getCell('B3').text).toBe('Cuadro de Turnos mes de Julio 2026');
-    expect(cacaoPista?.getCell('C32').text).toBe('Lunes 29/6');
-    expect(cacaoPista?.getCell('E32').text).toBe('Mier. 1/7');
-    expect(cacaoCaja?.getCell('D7').text).toBe('Lunes 29/6');
-    expect(cacaoCaja?.getCell('F7').text).toBe('Mier. 1/7');
+    expect(cacaoPista?.getCell('A1').text).toBe('Cuadro de Turnos mes de Julio 2026');
+    expect(cacaoPista?.getCell('A2').text).toBe('CACAO C1 - BOMBEROS');
+    expect(cacaoCaja?.getCell('A2').text).toBe('CAJA CACAO - CAJEROS');
+    expect(truckPista?.getCell('A2').text).toBe('TRUCK STOP - BOMBEROS');
+    expect(truckCaja?.getCell('A2').text).toBe('CAJA TRUCK STOP - CAJEROS');
 
-    expect(cacaoPista?.getCell('E33').text).toBe('Mario\nRene');
-    const reemplazoPista = obtenerRichText(
-      cacaoPista?.getCell('E33').value ?? null,
-    );
+    expect(textosDeHoja(cacaoPista!)).toContain('Mier. 1/7');
+    expect(textosDeHoja(cacaoPista!)).toContain('TURNO A');
+    expect(textosDeHoja(cacaoPista!)).toContain('TURNO B');
+    expect(textosDeHoja(cacaoPista!)).toContain('LIBRE');
+    expect(textosDeHoja(cacaoPista!)).toContain('FERIADO');
+    expect(textosDeHoja(cacaoPista!)).toContain('VACACIONES');
 
+    const celdaReemplazoPista = buscarCeldaPorTexto(cacaoPista!, 'Mario\nRene');
+    expect(celdaReemplazoPista).toBeDefined();
+    expect(celdaReemplazoPista?.alignment?.wrapText).toBe(true);
+    expect(celdaReemplazoPista?.fill).toMatchObject({
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFFCE4D6' },
+    });
+
+    const reemplazoPista = obtenerRichText(celdaReemplazoPista?.value ?? null);
     expect(reemplazoPista).toHaveLength(2);
     expect(reemplazoPista[0]).toMatchObject({
       text: 'Mario',
@@ -213,65 +249,33 @@ describe('ExcelCalendarioWriter con plantilla real', () => {
     expect(reemplazoPista[1]?.font?.size).toBeLessThan(
       reemplazoPista[0]?.font?.size ?? Number.POSITIVE_INFINITY,
     );
-    expect(cacaoPista?.getCell('E33').fill).toMatchObject({
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFFCE4D6' },
-    });
-    expect(cacaoPista?.getCell('E33').note).toBeUndefined();
-    expect(cacaoPista?.getCell('E33').alignment?.wrapText).toBe(true);
-    expect(cacaoPista?.getRow(33).height).toBeGreaterThanOrEqual(30);
-    expect(cacaoPista?.getCell('E43').text).toBe('Jose');
-    expect(cacaoPista?.getCell('E38').text).toBe('Edwin');
-    expect(cacaoPista?.getCell('E40').text).toBe('Rene');
-    expect(cacaoPista?.getCell('E42').text).toBe('Luis D');
-    expect(cacaoCaja?.getCell('F8').text).toBe('Natanael, Edwin\nCelio');
-    const reemplazoCaja = obtenerRichText(
-      cacaoCaja?.getCell('F8').value ?? null,
-    );
 
+    const celdaReemplazoCaja = buscarCeldaPorTexto(cacaoCaja!, 'Edwin\nCelio');
+    expect(celdaReemplazoCaja).toBeDefined();
+    const reemplazoCaja = obtenerRichText(celdaReemplazoCaja?.value ?? null);
     expect(reemplazoCaja).toHaveLength(2);
     expect(reemplazoCaja[0]).toMatchObject({
-      text: 'Natanael, Edwin',
+      text: 'Edwin',
       font: { bold: true, color: { argb: 'FF000000' } },
     });
     expect(reemplazoCaja[1]).toMatchObject({
       text: '\nCelio',
       font: { color: { argb: 'FF8A8A8A' } },
     });
-    expect(reemplazoCaja[1]?.font?.bold ?? false).toBe(false);
-    expect(cacaoCaja?.getCell('F8').fill).toMatchObject({
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFFCE4D6' },
-    });
-    expect(cacaoCaja?.getCell('F8').note).toBeUndefined();
-    expect(cacaoCaja?.getCell('F13').text).toBe('Rony');
-    expect(cacaoCaja?.getCell('F9').text).toBe('Celio');
-    expect(truckPista?.getCell('E30').text).toBe('Jeferson');
-    expect(truckCaja?.getCell('F8').text).toBe('Norlan');
-    expect(truckCaja?.getCell('F13').text).toBe('Derlin');
-    expect(truckCaja?.getCell('F9').text).toBe('Lester');
 
-    expect(cacaoPista?.getCell('B3').isMerged).toBe(true);
-    expect(cacaoPista?.getCell('B3').master.address).toBe('B3');
-    expect(cacaoPista?.getCell('A32').isMerged).toBe(true);
-    expect(cacaoPista?.getCell('A32').alignment?.textRotation).toBe(90);
-    expect(cacaoPista?.getCell('E32').font?.bold).toBe(true);
-    expect(cacaoPista?.getCell('E32').border?.top?.style).toBe('thin');
-    expect(cacaoPista?.getCell('I43').fill).toMatchObject({
-      type: 'pattern',
-      pattern: 'none',
-    });
-    expect(cacaoPista?.getCell('E43').font?.color).toEqual({
-      argb: 'FF000000',
-    });
-    expect(cacaoPista?.getColumn(5).width).toBe(anchoOriginal);
-    expect(cacaoPista?.getRow(8).hidden).toBe(true);
-    expect(cacaoPista?.getRow(32).hidden).toBe(false);
+    expect(textosDeHoja(cacaoPista!)).toContain('Jose');
+    expect(textosDeHoja(cacaoPista!)).toContain('Edwin');
+    expect(textosDeHoja(cacaoPista!)).toContain('Rene');
+    expect(textosDeHoja(cacaoPista!)).toContain('Luis D');
+    expect(textosDeHoja(cacaoCaja!)).toContain('Rony');
+    expect(textosDeHoja(cacaoCaja!)).toContain('Celio');
+    expect(textosDeHoja(truckPista!)).toContain('Jeferson');
+    expect(textosDeHoja(truckCaja!)).toContain('Norlan');
+    expect(textosDeHoja(truckCaja!)).toContain('Derlin');
+    expect(textosDeHoja(truckCaja!)).toContain('Lester');
   });
 
-  it('genera la sexta semana de agosto clonando formato y fusiones del último bloque', async () => {
+  it('genera agosto con sexta semana usando el diseño nuevo propio', async () => {
     const writer = new ExcelCalendarioWriter();
     const buffer = await writer.escribirCalendario(crearCalendario(), {
       rutaPlantilla,
@@ -279,12 +283,8 @@ describe('ExcelCalendarioWriter con plantilla real', () => {
       anio: 2026,
     });
     const resultado = new ExcelJS.Workbook();
-    const contenido = buffer.buffer.slice(
-      buffer.byteOffset,
-      buffer.byteOffset + buffer.byteLength,
-    ) as ArrayBuffer;
 
-    await resultado.xlsx.load(contenido);
+    await resultado.xlsx.load(bufferComoArrayBuffer(buffer));
 
     expect(resultado.worksheets.map(({ name }) => name)).toEqual([
       'CACAO C1',
@@ -294,35 +294,19 @@ describe('ExcelCalendarioWriter con plantilla real', () => {
     ]);
     expect(contarFormulas(resultado)).toBe(0);
 
-    const cacaoPista = resultado.getWorksheet('CACAO C1');
-    const cacaoCaja = resultado.getWorksheet('CAJA CACAO');
-    const truckPista = resultado.getWorksheet('TRUCK STOP');
-    const truckCaja = resultado.getWorksheet('CAJA TRUCK STOP');
+    for (const nombreHoja of ['CACAO C1', 'CAJA CACAO', 'TRUCK STOP', 'CAJA TRUCK STOP']) {
+      const hoja = resultado.getWorksheet(nombreHoja);
+      expect(hoja).toBeDefined();
+      expect(hoja?.getCell('A1').text).toBe('Cuadro de Turnos mes de Agosto 2026');
+      expect(textosDeHoja(hoja!)).toContain('SEMANA 6');
+      expect(textosDeHoja(hoja!)).toContain('Lunes 31/8');
+    }
 
-    expect(cacaoPista?.getCell('B3').text).toBe('Cuadro de Turnos mes de Agosto 2026');
-    expect(cacaoPista?.getCell('A144').text).toBe('SEMANA 6');
-    expect(cacaoPista?.getCell('C144').text).toBe('Lunes 31/8');
-    expect(cacaoPista?.getCell('C145').text).toBe('Mario');
-    expect(cacaoPista?.getCell('A144').isMerged).toBe(true);
-    expect(cacaoPista?.getCell('A144').master.address).toBe('A144');
-    expect(cacaoPista?.getCell('A144').alignment?.textRotation).toBe(90);
-    expect(cacaoPista?.getCell('C144').font?.bold).toBe(true);
-    expect(cacaoPista?.getCell('C144').border?.top?.style).toBe('thin');
-
-    expect(cacaoCaja?.getCell('A70').text).toBe('SEMANA 6');
-    expect(cacaoCaja?.getCell('D70').text).toBe('Lunes 31/8');
-    expect(cacaoCaja?.getCell('D71').text).toBe('Natanael, Edwin');
-    expect(cacaoCaja?.getCell('A70').isMerged).toBe(true);
-
-    expect(truckPista?.getCell('A132').text).toBe('SEMANA 6');
-    expect(truckPista?.getCell('C132').text).toBe('Lunes 31/8');
-    expect(truckPista?.getCell('C133').text).toBe('Jeferson');
-    expect(truckPista?.getCell('A132').isMerged).toBe(true);
-
-    expect(truckCaja?.getCell('A78').text).toBe('SEMANA 6');
-    expect(truckCaja?.getCell('D78').text).toBe('Lunes 31/8');
-    expect(truckCaja?.getCell('D79').text).toBe('Norlan');
-    expect(truckCaja?.getCell('A78').isMerged).toBe(true);
+    expect(textosDeHoja(resultado.getWorksheet('CACAO C1')!)).toContain('Mario');
+    expect(textosDeHoja(resultado.getWorksheet('CAJA CACAO')!)).toContain('Natanael');
+    expect(textosDeHoja(resultado.getWorksheet('CAJA CACAO')!)).toContain('Edwin');
+    expect(textosDeHoja(resultado.getWorksheet('TRUCK STOP')!)).toContain('Jeferson');
+    expect(textosDeHoja(resultado.getWorksheet('CAJA TRUCK STOP')!)).toContain('Norlan');
   });
 
   it('vuelve a importar el Excel generado sin nombres fantasma ni perder flexibles de caja', async () => {
@@ -374,12 +358,8 @@ describe('ExcelCalendarioWriter con plantilla real', () => {
       },
     );
     const workbook = new ExcelJS.Workbook();
-    const contenido = buffer.buffer.slice(
-      buffer.byteOffset,
-      buffer.byteOffset + buffer.byteLength,
-    ) as ArrayBuffer;
 
-    await workbook.xlsx.load(contenido);
+    await workbook.xlsx.load(bufferComoArrayBuffer(buffer));
 
     const reader = new ExcelCalendarioReader({
       cargar: async () => workbook,

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { access, unlink, writeFile } from 'node:fs/promises';
+import { unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -209,16 +209,6 @@ export class PlanningApiService implements PlanningApi {
     input: unknown,
   ): Promise<ExportacionExcelApi> {
     const solicitud = this.mapper.parseExportarCalendario(input);
-
-    try {
-      await access(this.templatePath);
-    } catch {
-      throw new HttpApiError(
-        500,
-        'PLANTILLA_NO_DISPONIBLE',
-        'La plantilla Excel del servidor no está disponible.',
-      );
-    }
 
     let contenido: Buffer;
 
