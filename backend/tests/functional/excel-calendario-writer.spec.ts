@@ -21,9 +21,7 @@ function crearEmpleado(nombre: string, estado: string): Empleado {
   });
 }
 
-function crearCalendario(
-  opciones: { jefersonEnCaja?: boolean } = {},
-): Calendario {
+function crearCalendario(opciones: { jefersonEnCaja?: boolean } = {}): Calendario {
   const calendario = new Calendario('Julio 2026');
 
   calendario.agregarUnidadOperativa(
@@ -76,6 +74,57 @@ function crearCalendario(
             crearEmpleado('Derlin', 'TURNO B'),
             crearEmpleado('Lester', 'OTRO'),
           ],
+    }),
+  );
+
+  return calendario;
+}
+
+function crearCalendarioVisualAgosto(): Calendario {
+  const totalDiasVisuales = 37;
+  const crearEmpleadoVisual = (nombre: string, estado: string): Empleado =>
+    Empleado.create({
+      nombre,
+      estadosPorDia: Array.from({ length: totalDiasVisuales }, () => EstadoTurno.create(estado)),
+    });
+  const calendario = new Calendario('Agosto 2026', {
+    mes: 8,
+    anio: 2026,
+    fechaInicio: new Date('2026-08-01T00:00:00.000Z'),
+    fechaFin: new Date('2026-09-06T00:00:00.000Z'),
+  });
+
+  calendario.agregarUnidadOperativa(
+    UnidadOperativa.create({
+      nombre: 'CACAO PISTA',
+      empleados: [crearEmpleadoVisual('Mario', 'TURNO A'), crearEmpleadoVisual('Jose', 'TURNO B')],
+    }),
+  );
+  calendario.agregarUnidadOperativa(
+    UnidadOperativa.create({
+      nombre: 'CACAO CAJA',
+      empleados: [
+        crearEmpleadoVisual('Natanael', 'TURNO A'),
+        crearEmpleadoVisual('Rony', 'TURNO B'),
+      ],
+    }),
+  );
+  calendario.agregarUnidadOperativa(
+    UnidadOperativa.create({
+      nombre: 'TRUCK STOP PISTA',
+      empleados: [
+        crearEmpleadoVisual('Jeferson', 'TURNO A'),
+        crearEmpleadoVisual('Milton', 'TURNO B'),
+      ],
+    }),
+  );
+  calendario.agregarUnidadOperativa(
+    UnidadOperativa.create({
+      nombre: 'TRUCK STOP CAJA',
+      empleados: [
+        crearEmpleadoVisual('Norlan', 'TURNO A'),
+        crearEmpleadoVisual('Derlin', 'TURNO B'),
+      ],
     }),
   );
 
@@ -309,54 +358,80 @@ describe('ExcelCalendarioWriter con diseño limpio propio', () => {
     expect(textosDeHoja(resultado.getWorksheet('CAJA TRUCK STOP')!)).toContain('Norlan');
   });
 
+  it('exporta reemplazos de la extensión visual usando el índice del calendario', async () => {
+    const writer = new ExcelCalendarioWriter();
+    const buffer = await writer.escribirCalendario(crearCalendarioVisualAgosto(), {
+      mes: 8,
+      anio: 2026,
+      reemplazos: [
+        ReemplazoPlanificacion.create({
+          unidadOperativa: 'CACAO PISTA',
+          dia: 32,
+          turno: 'TURNO A',
+          empleadoTitular: 'Rene',
+          empleadoReemplazo: 'Mario',
+          tipoCobertura: 'COMODIN',
+          motivo: 'VACACIONES',
+        }),
+      ],
+    });
+    const resultado = new ExcelJS.Workbook();
+
+    await resultado.xlsx.load(bufferComoArrayBuffer(buffer));
+
+    const cacaoPista = resultado.getWorksheet('CACAO C1');
+    const celdaReemplazo = buscarCeldaPorTexto(cacaoPista!, 'Mario\nRene');
+
+    expect(textosDeHoja(cacaoPista!)).toContain('Martes 1/9');
+    expect(celdaReemplazo).toBeDefined();
+    expect(celdaReemplazo?.fullAddress.col).toBe(4);
+  });
+
   it('vuelve a importar el Excel generado sin nombres fantasma ni perder flexibles de caja', async () => {
     const writer = new ExcelCalendarioWriter();
-    const buffer = await writer.escribirCalendario(
-      crearCalendario({ jefersonEnCaja: true }),
-      {
-        rutaPlantilla,
-        mes: 7,
-        anio: 2026,
-        reemplazos: [
-          ReemplazoPlanificacion.create({
-            unidadOperativa: 'CACAO PISTA',
-            dia: 1,
-            turno: 'TURNO A',
-            empleadoTitular: 'Rene',
-            empleadoReemplazo: 'Mario',
-            tipoCobertura: 'BASE',
-            motivo: 'FERIADO',
-          }),
-          ReemplazoPlanificacion.create({
-            unidadOperativa: 'CACAO CAJA',
-            dia: 1,
-            turno: 'TURNO A',
-            empleadoTitular: 'Celio',
-            empleadoReemplazo: 'Edwin',
-            tipoCobertura: 'FLEXIBLE',
-            motivo: 'DESCANSO',
-          }),
-          ReemplazoPlanificacion.create({
-            unidadOperativa: 'TRUCK STOP CAJA',
-            dia: 1,
-            turno: 'TURNO B',
-            empleadoTitular: 'Derlin',
-            empleadoReemplazo: 'Jeferson',
-            tipoCobertura: 'FLEXIBLE',
-            motivo: 'DESCANSO',
-          }),
-          ReemplazoPlanificacion.create({
-            unidadOperativa: 'TRUCK STOP PISTA',
-            dia: 1,
-            turno: 'TURNO A',
-            empleadoTitular: null,
-            empleadoReemplazo: 'Jeferson',
-            tipoCobertura: 'BASE',
-            motivo: 'FALTANTE',
-          }),
-        ],
-      },
-    );
+    const buffer = await writer.escribirCalendario(crearCalendario({ jefersonEnCaja: true }), {
+      rutaPlantilla,
+      mes: 7,
+      anio: 2026,
+      reemplazos: [
+        ReemplazoPlanificacion.create({
+          unidadOperativa: 'CACAO PISTA',
+          dia: 1,
+          turno: 'TURNO A',
+          empleadoTitular: 'Rene',
+          empleadoReemplazo: 'Mario',
+          tipoCobertura: 'BASE',
+          motivo: 'FERIADO',
+        }),
+        ReemplazoPlanificacion.create({
+          unidadOperativa: 'CACAO CAJA',
+          dia: 1,
+          turno: 'TURNO A',
+          empleadoTitular: 'Celio',
+          empleadoReemplazo: 'Edwin',
+          tipoCobertura: 'FLEXIBLE',
+          motivo: 'DESCANSO',
+        }),
+        ReemplazoPlanificacion.create({
+          unidadOperativa: 'TRUCK STOP CAJA',
+          dia: 1,
+          turno: 'TURNO B',
+          empleadoTitular: 'Derlin',
+          empleadoReemplazo: 'Jeferson',
+          tipoCobertura: 'FLEXIBLE',
+          motivo: 'DESCANSO',
+        }),
+        ReemplazoPlanificacion.create({
+          unidadOperativa: 'TRUCK STOP PISTA',
+          dia: 1,
+          turno: 'TURNO A',
+          empleadoTitular: null,
+          empleadoReemplazo: 'Jeferson',
+          tipoCobertura: 'BASE',
+          motivo: 'FALTANTE',
+        }),
+      ],
+    });
     const workbook = new ExcelJS.Workbook();
 
     await workbook.xlsx.load(bufferComoArrayBuffer(buffer));
@@ -370,9 +445,7 @@ describe('ExcelCalendarioWriter con diseño limpio propio', () => {
     );
 
     expect(nombres).not.toContainEqual(expect.stringMatching(/\bpor\b/iu));
-    expect(nombres).not.toContainEqual(
-      expect.stringMatching(/cobertura adicional/iu),
-    );
+    expect(nombres).not.toContainEqual(expect.stringMatching(/cobertura adicional/iu));
     expect(
       reimportado
         .buscarUnidadOperativa('CACAO CAJA')

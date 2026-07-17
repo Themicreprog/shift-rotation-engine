@@ -77,18 +77,13 @@ const UNIDAD_INTERNA_POR_NOMBRE = new Map<string, string>(
 );
 
 const UNIDAD_PUBLICA_POR_NOMBRE_INTERNO = new Map<string, string>(
-  NOMBRES_UNIDADES.map(({ interno, publico }) => [
-    normalizarNombreUnidad(interno),
-    publico,
-  ]),
+  NOMBRES_UNIDADES.map(({ interno, publico }) => [normalizarNombreUnidad(interno), publico]),
 );
 
-const REEMPLAZOS_UNIDADES_EN_TEXTO = NOMBRES_UNIDADES.map(
-  ({ interno, publico }) => ({
-    expresion: new RegExp(escaparExpresionRegular(interno), 'giu'),
-    publico,
-  }),
-);
+const REEMPLAZOS_UNIDADES_EN_TEXTO = NOMBRES_UNIDADES.map(({ interno, publico }) => ({
+  expresion: new RegExp(escaparExpresionRegular(interno), 'giu'),
+  publico,
+}));
 
 type JsonObject = Record<string, unknown>;
 
@@ -124,10 +119,7 @@ export type AjustarPlanificacionInput =
     };
 
 export class PlanningHttpMapper {
-  public parseImportarCalendario(
-    valor: unknown,
-    maximoBytes: number,
-  ): ArchivoExcelDto {
+  public parseImportarCalendario(valor: unknown, maximoBytes: number): ArchivoExcelDto {
     const objeto = this.requireObject(valor, 'La solicitud');
     this.assertAllowedKeys(
       objeto,
@@ -135,10 +127,8 @@ export class PlanningHttpMapper {
       'La solicitud de importación',
     );
 
-    const nombreArchivo = this.optionalString(
-      objeto['nombreArchivo'],
-      'nombreArchivo',
-    ) ?? 'calendario.xlsx';
+    const nombreArchivo =
+      this.optionalString(objeto['nombreArchivo'], 'nombreArchivo') ?? 'calendario.xlsx';
 
     if (!nombreArchivo.toLowerCase().endsWith('.xlsx')) {
       throw this.invalid('nombreArchivo debe terminar en .xlsx.');
@@ -150,10 +140,7 @@ export class PlanningHttpMapper {
       Math.ceil((maximoBytes * 4) / 3) + 4,
     );
 
-    if (
-      contenidoBase64.length % 4 !== 0 ||
-      !/^[A-Za-z0-9+/]*={0,2}$/.test(contenidoBase64)
-    ) {
+    if (contenidoBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(contenidoBase64)) {
       throw this.invalid('contenidoBase64 no contiene Base64 válido.');
     }
 
@@ -182,21 +169,11 @@ export class PlanningHttpMapper {
     const objeto = this.requireObject(valor, 'La solicitud');
     this.assertAllowedKeys(
       objeto,
-      [
-        'calendarioOrigen',
-        'mes',
-        'anio',
-        'alcanceOperativo',
-        'eventos',
-        'comodines',
-      ],
+      ['calendarioOrigen', 'mes', 'anio', 'alcanceOperativo', 'eventos', 'comodines'],
       'La solicitud de planificación',
     );
 
-    const calendario = this.parseCalendario(
-      objeto['calendarioOrigen'],
-      'calendarioOrigen',
-    );
+    const calendario = this.parseCalendario(objeto['calendarioOrigen'], 'calendarioOrigen');
     const mes = this.parseMes(objeto['mes']);
     const anio = this.parseAnio(objeto['anio']);
     const periodo = this.crearPeriodoMensual(mes, anio);
@@ -234,15 +211,14 @@ export class PlanningHttpMapper {
 
     const mes = this.parseMes(objeto['mes']);
     const anio = this.parseAnio(objeto['anio']);
+    const calendario = this.parseCalendario(objeto['calendario'], 'calendario');
+    const totalDiasExportables = this.calcularTotalDiasExportables(calendario, mes, anio);
 
     return {
-      calendario: this.parseCalendario(objeto['calendario'], 'calendario'),
+      calendario,
       mes,
       anio,
-      reemplazos: this.parseReemplazos(
-        objeto['reemplazos'],
-        new Date(anio, mes, 0).getDate(),
-      ),
+      reemplazos: this.parseReemplazos(objeto['reemplazos'], totalDiasExportables),
     };
   }
 
@@ -250,15 +226,7 @@ export class PlanningHttpMapper {
     const objeto = this.requireObject(valor, 'La solicitud');
     this.assertAllowedKeys(
       objeto,
-      [
-        'accion',
-        'calendario',
-        'historial',
-        'unidadOperativa',
-        'dia',
-        'titular',
-        'reemplazo',
-      ],
+      ['accion', 'calendario', 'historial', 'unidadOperativa', 'dia', 'titular', 'reemplazo'],
       'La solicitud de ajuste manual',
     );
     const accion = this.requireString(objeto['accion'], 'accion');
@@ -320,15 +288,9 @@ export class PlanningHttpMapper {
     return {
       calendario: this.calendarioToDto(resultado.calendario),
       cambios: resultado.cambios.map((cambio) => this.textoPublico(cambio)),
-      advertencias: resultado.advertencias.map((advertencia) =>
-        this.textoPublico(advertencia),
-      ),
-      conflictos: resultado.conflictos.map((conflicto) =>
-        this.textoPublico(conflicto),
-      ),
-      reemplazos: reemplazos.map((reemplazo) =>
-        this.reemplazoToDto(reemplazo),
-      ),
+      advertencias: resultado.advertencias.map((advertencia) => this.textoPublico(advertencia)),
+      conflictos: resultado.conflictos.map((conflicto) => this.textoPublico(conflicto)),
+      reemplazos: reemplazos.map((reemplazo) => this.reemplazoToDto(reemplazo)),
       exportable: resultado.conflictos.length === 0,
     };
   }
@@ -340,26 +302,15 @@ export class PlanningHttpMapper {
     return {
       calendario: this.calendarioToDto(resultado.calendario),
       historial: resultado.historial.map((ajuste) => this.ajusteToDto(ajuste)),
-      ajuste:
-        resultado.ajuste === null
-          ? null
-          : this.ajusteToDto(resultado.ajuste),
-      conflictos: resultado.conflictos.map((conflicto) =>
-        this.textoPublico(conflicto),
-      ),
-      reemplazos: reemplazos.map((reemplazo) =>
-        this.reemplazoToDto(reemplazo),
-      ),
+      ajuste: resultado.ajuste === null ? null : this.ajusteToDto(resultado.ajuste),
+      conflictos: resultado.conflictos.map((conflicto) => this.textoPublico(conflicto)),
+      reemplazos: reemplazos.map((reemplazo) => this.reemplazoToDto(reemplazo)),
     };
   }
 
   private parseCalendario(valor: unknown, campo: string): Calendario {
     const objeto = this.requireObject(valor, campo);
-    this.assertAllowedKeys(
-      objeto,
-      ['nombre', 'unidadesOperativas', 'periodoOrigen'],
-      campo,
-    );
+    this.assertAllowedKeys(objeto, ['nombre', 'unidadesOperativas', 'periodoOrigen'], campo);
     const nombre = this.requireString(objeto['nombre'], `${campo}.nombre`);
     const unidadesRaw = this.requireArray(
       objeto['unidadesOperativas'],
@@ -404,11 +355,7 @@ export class PlanningHttpMapper {
     }
 
     const objeto = this.requireObject(valor, campo);
-    this.assertAllowedKeys(
-      objeto,
-      ['mes', 'anio', 'fechaInicio', 'fechaFin'],
-      campo,
-    );
+    this.assertAllowedKeys(objeto, ['mes', 'anio', 'fechaInicio', 'fechaFin'], campo);
     const mes = this.requireInteger(objeto['mes'], `${campo}.mes`);
     const anio = this.requireInteger(objeto['anio'], `${campo}.anio`);
 
@@ -423,10 +370,7 @@ export class PlanningHttpMapper {
     return {
       mes,
       anio,
-      fechaInicio: this.parseFecha(
-        objeto['fechaInicio'],
-        `${campo}.fechaInicio`,
-      ),
+      fechaInicio: this.parseFecha(objeto['fechaInicio'], `${campo}.fechaInicio`),
       fechaFin: this.parseFecha(objeto['fechaFin'], `${campo}.fechaFin`),
     };
   }
@@ -434,9 +378,7 @@ export class PlanningHttpMapper {
   private parseUnidad(valor: unknown, campo: string): UnidadOperativa {
     const objeto = this.requireObject(valor, campo);
     this.assertAllowedKeys(objeto, ['nombre', 'empleados'], campo);
-    const nombre = this.unidadInterna(
-      this.requireString(objeto['nombre'], `${campo}.nombre`),
-    );
+    const nombre = this.unidadInterna(this.requireString(objeto['nombre'], `${campo}.nombre`));
     const empleadosRaw = this.requireArray(
       objeto['empleados'],
       `${campo}.empleados`,
@@ -501,10 +443,7 @@ export class PlanningHttpMapper {
       );
       const empleado = this.requireString(objeto['empleado'], `${campo}.empleado`);
       const tipo = this.requireString(objeto['tipo'], `${campo}.tipo`);
-      const fechaInicio = this.parseFecha(
-        objeto['fechaInicio'],
-        `${campo}.fechaInicio`,
-      );
+      const fechaInicio = this.parseFecha(objeto['fechaInicio'], `${campo}.fechaInicio`);
       const fechaFin = this.parseFecha(objeto['fechaFin'], `${campo}.fechaFin`);
       const unidadOperativaPublica = this.optionalString(
         objeto['unidadOperativa'],
@@ -515,10 +454,7 @@ export class PlanningHttpMapper {
           ? undefined
           : this.unidadInterna(unidadOperativaPublica);
 
-      if (
-        tipo !== TipoEventoPlanificacion.VACACIONES &&
-        tipo !== TipoEventoPlanificacion.FERIADO
-      ) {
+      if (tipo !== TipoEventoPlanificacion.VACACIONES && tipo !== TipoEventoPlanificacion.FERIADO) {
         throw this.invalid(`${campo}.tipo debe ser VACACIONES o FERIADO.`);
       }
 
@@ -534,9 +470,7 @@ export class PlanningHttpMapper {
     });
   }
 
-  private parseComodines(
-    valor: unknown,
-  ): Array<{ unidadOperativa: string; empleado: string }> {
+  private parseComodines(valor: unknown): Array<{ unidadOperativa: string; empleado: string }> {
     if (valor === undefined) return [];
 
     return this.requireArray(valor, 'comodines', 100).map((comodin, indice) => {
@@ -546,104 +480,102 @@ export class PlanningHttpMapper {
 
       return {
         unidadOperativa: this.unidadInterna(
-          this.requireString(
-            objeto['unidadOperativa'],
-            `${campo}.unidadOperativa`,
-          ),
+          this.requireString(objeto['unidadOperativa'], `${campo}.unidadOperativa`),
         ),
         empleado: this.requireString(objeto['empleado'], `${campo}.empleado`),
       };
     });
   }
 
-  private parseReemplazos(
-    valor: unknown,
-    diasEnMes: number,
-  ): ReemplazoPlanificacion[] {
+  private calcularTotalDiasExportables(calendario: Calendario, mes: number, anio: number): number {
+    const diasEnMes = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+    const periodoOrigen = calendario.obtenerPeriodoOrigen();
+
+    if (periodoOrigen === null) {
+      return diasEnMes;
+    }
+
+    const milisegundosPorDia = 24 * 60 * 60 * 1000;
+    const totalDiasVisuales =
+      Math.round(
+        (periodoOrigen.fechaFin.getTime() - periodoOrigen.fechaInicio.getTime()) /
+          milisegundosPorDia,
+      ) + 1;
+
+    return Math.max(diasEnMes, totalDiasVisuales);
+  }
+
+  private parseReemplazos(valor: unknown, totalDiasExportables: number): ReemplazoPlanificacion[] {
     if (valor === undefined) return [];
 
-    return this.requireArray(valor, 'reemplazos', 2_000).map(
-      (reemplazo, indice) => {
-        const campo = `reemplazos[${indice}]`;
-        const objeto = this.requireObject(reemplazo, campo);
-        this.assertAllowedKeys(
-          objeto,
-          [
-            'unidadOperativa',
-            'dia',
-            'turno',
-            'empleadoTitular',
-            'empleadoReemplazo',
-            'tipoCobertura',
-            'motivo',
-          ],
-          campo,
-        );
-        const dia = this.requireInteger(objeto['dia'], `${campo}.dia`);
-        const turno = this.requireString(objeto['turno'], `${campo}.turno`);
-        const tipoCobertura = this.requireString(
-          objeto['tipoCobertura'],
-          `${campo}.tipoCobertura`,
-        );
-        const motivo = this.requireString(objeto['motivo'], `${campo}.motivo`);
+    return this.requireArray(valor, 'reemplazos', 2_000).map((reemplazo, indice) => {
+      const campo = `reemplazos[${indice}]`;
+      const objeto = this.requireObject(reemplazo, campo);
+      this.assertAllowedKeys(
+        objeto,
+        [
+          'unidadOperativa',
+          'dia',
+          'turno',
+          'empleadoTitular',
+          'empleadoReemplazo',
+          'tipoCobertura',
+          'motivo',
+        ],
+        campo,
+      );
+      const dia = this.requireInteger(objeto['dia'], `${campo}.dia`);
+      const turno = this.requireString(objeto['turno'], `${campo}.turno`);
+      const tipoCobertura = this.requireString(objeto['tipoCobertura'], `${campo}.tipoCobertura`);
+      const motivo = this.requireString(objeto['motivo'], `${campo}.motivo`);
 
-        if (dia < 1 || dia > diasEnMes) {
-          throw this.invalid(`${campo}.dia debe estar entre 1 y ${diasEnMes}.`);
-        }
+      if (dia < 1 || dia > totalDiasExportables) {
+        throw this.invalid(`${campo}.dia debe estar entre 1 y ${totalDiasExportables}.`);
+      }
 
-        if (turno !== 'TURNO A' && turno !== 'TURNO B') {
-          throw this.invalid(`${campo}.turno debe ser TURNO A o TURNO B.`);
-        }
+      if (turno !== 'TURNO A' && turno !== 'TURNO B') {
+        throw this.invalid(`${campo}.turno debe ser TURNO A o TURNO B.`);
+      }
 
-        if (
-          !TIPOS_COBERTURA.has(tipoCobertura as TipoCoberturaPlanificacion)
-        ) {
-          throw this.invalid(`${campo}.tipoCobertura no es válido.`);
-        }
+      if (!TIPOS_COBERTURA.has(tipoCobertura as TipoCoberturaPlanificacion)) {
+        throw this.invalid(`${campo}.tipoCobertura no es válido.`);
+      }
 
-        if (!MOTIVOS_REEMPLAZO.has(motivo as MotivoReemplazoPlanificacion)) {
-          throw this.invalid(`${campo}.motivo no es válido.`);
-        }
+      if (!MOTIVOS_REEMPLAZO.has(motivo as MotivoReemplazoPlanificacion)) {
+        throw this.invalid(`${campo}.motivo no es válido.`);
+      }
 
-        try {
-          return ReemplazoPlanificacion.create({
-            unidadOperativa: this.unidadInterna(
-              this.requireString(
-                objeto['unidadOperativa'],
-                `${campo}.unidadOperativa`,
-              ),
-            ),
-            dia,
-            turno: turno as TurnoOperativoPlanificacion,
-            empleadoTitular: this.optionalNullableString(
-              objeto['empleadoTitular'],
-              `${campo}.empleadoTitular`,
-            ),
-            empleadoReemplazo: this.requireString(
-              objeto['empleadoReemplazo'],
-              `${campo}.empleadoReemplazo`,
-            ),
-            tipoCobertura: tipoCobertura as TipoCoberturaPlanificacion,
-            motivo: motivo as MotivoReemplazoPlanificacion,
-          });
-        } catch (error) {
-          throw this.domainError(error);
-        }
-      },
-    );
+      try {
+        return ReemplazoPlanificacion.create({
+          unidadOperativa: this.unidadInterna(
+            this.requireString(objeto['unidadOperativa'], `${campo}.unidadOperativa`),
+          ),
+          dia,
+          turno: turno as TurnoOperativoPlanificacion,
+          empleadoTitular: this.optionalNullableString(
+            objeto['empleadoTitular'],
+            `${campo}.empleadoTitular`,
+          ),
+          empleadoReemplazo: this.requireString(
+            objeto['empleadoReemplazo'],
+            `${campo}.empleadoReemplazo`,
+          ),
+          tipoCobertura: tipoCobertura as TipoCoberturaPlanificacion,
+          motivo: motivo as MotivoReemplazoPlanificacion,
+        });
+      } catch (error) {
+        throw this.domainError(error);
+      }
+    });
   }
 
   private parseHistorialAjustes(valor: unknown): AjusteManualPlanificacion[] {
-    return this.requireArray(valor, 'historial', 2_000).map(
-      (registro, indice) =>
-        this.parseAjusteManual(registro, `historial[${indice}]`),
+    return this.requireArray(valor, 'historial', 2_000).map((registro, indice) =>
+      this.parseAjusteManual(registro, `historial[${indice}]`),
     );
   }
 
-  private parseAjusteManual(
-    valor: unknown,
-    campo: string,
-  ): AjusteManualPlanificacion {
+  private parseAjusteManual(valor: unknown, campo: string): AjusteManualPlanificacion {
     const objeto = this.requireObject(valor, campo);
     this.assertAllowedKeys(
       objeto,
@@ -674,20 +606,14 @@ export class PlanningHttpMapper {
       `${campo}.estadoReemplazoAnterior`,
     );
     const estado = this.parseEstadoAjuste(objeto['estado'], `${campo}.estado`);
-    const movimientos = this.parseMovimientosAjuste(
-      objeto['movimientos'],
-      `${campo}.movimientos`,
-    );
+    const movimientos = this.parseMovimientosAjuste(objeto['movimientos'], `${campo}.movimientos`);
     let ajuste: AjusteManualPlanificacion;
 
     try {
       ajuste = AjusteManualPlanificacion.create({
         id: this.requireString(objeto['id'], `${campo}.id`),
         unidadOperativa: this.unidadInterna(
-          this.requireString(
-            objeto['unidadOperativa'],
-            `${campo}.unidadOperativa`,
-          ),
+          this.requireString(objeto['unidadOperativa'], `${campo}.unidadOperativa`),
         ),
         dia: this.requireInteger(objeto['dia'], `${campo}.dia`),
         titular: this.requireString(objeto['titular'], `${campo}.titular`),
@@ -723,9 +649,7 @@ export class PlanningHttpMapper {
       estadoTitularPosterior !== ajuste.estadoTitularPosterior ||
       estadoReemplazoPosterior !== ajuste.estadoReemplazoPosterior
     ) {
-      throw this.invalid(
-        `${campo} contiene datos derivados que no coinciden con sus movimientos.`,
-      );
+      throw this.invalid(`${campo} contiene datos derivados que no coinciden con sus movimientos.`);
     }
 
     return ajuste;
@@ -745,29 +669,18 @@ export class PlanningHttpMapper {
       );
 
       return {
-        turno: this.parseTurnoAjuste(
-          objeto['turno'],
-          `${nombreCampo}.turno`,
-        ),
+        turno: this.parseTurnoAjuste(objeto['turno'], `${nombreCampo}.turno`),
         titularOriginal: this.requireString(
           objeto['titularOriginal'],
           `${nombreCampo}.titularOriginal`,
         ),
-        titular: this.requireString(
-          objeto['titular'],
-          `${nombreCampo}.titular`,
-        ),
-        reemplazo: this.requireString(
-          objeto['reemplazo'],
-          `${nombreCampo}.reemplazo`,
-        ),
+        titular: this.requireString(objeto['titular'], `${nombreCampo}.titular`),
+        reemplazo: this.requireString(objeto['reemplazo'], `${nombreCampo}.reemplazo`),
       };
     });
   }
 
-  private ajusteToDto(
-    ajuste: AjusteManualPlanificacion,
-  ): AjusteManualPlanificacionDto {
+  private ajusteToDto(ajuste: AjusteManualPlanificacion): AjusteManualPlanificacionDto {
     return {
       id: ajuste.id,
       tipo: ajuste.tipo,
@@ -809,10 +722,7 @@ export class PlanningHttpMapper {
     return estado;
   }
 
-  private parseEstadoAjuste(
-    valor: unknown,
-    campo: string,
-  ): EstadoAjusteManualPlanificacion {
+  private parseEstadoAjuste(valor: unknown, campo: string): EstadoAjusteManualPlanificacion {
     const estado = this.requireString(valor, campo);
 
     if (estado !== 'APLICADO' && estado !== 'DESHECHO') {
@@ -822,9 +732,7 @@ export class PlanningHttpMapper {
     return estado;
   }
 
-  private extraerReemplazos(
-    resultado: RotationResult,
-  ): ReadonlyArray<ReemplazoPlanificacion> {
+  private extraerReemplazos(resultado: RotationResult): ReadonlyArray<ReemplazoPlanificacion> {
     if (!('reemplazos' in resultado) || !Array.isArray(resultado.reemplazos)) {
       return [];
     }
@@ -835,9 +743,7 @@ export class PlanningHttpMapper {
     );
   }
 
-  private reemplazoToDto(
-    reemplazo: ReemplazoPlanificacion,
-  ): ReemplazoPlanificacionDto {
+  private reemplazoToDto(reemplazo: ReemplazoPlanificacion): ReemplazoPlanificacionDto {
     return {
       unidadOperativa: this.unidadPublica(reemplazo.unidadOperativa),
       dia: reemplazo.dia,
@@ -896,39 +802,25 @@ export class PlanningHttpMapper {
     return fecha.toISOString().slice(0, 10);
   }
 
-  private parseStringArray(
-    valor: unknown,
-    campo: string,
-    maximo: number,
-  ): string[] {
+  private parseStringArray(valor: unknown, campo: string, maximo: number): string[] {
     const valores = this.requireArray(valor, campo, maximo);
 
     if (valores.length === 0) {
       throw this.invalid(`${campo} no puede estar vacío.`);
     }
 
-    return valores.map((item, indice) =>
-      this.requireString(item, `${campo}[${indice}]`),
-    );
+    return valores.map((item, indice) => this.requireString(item, `${campo}[${indice}]`));
   }
 
   private requireObject(valor: unknown, campo: string): JsonObject {
-    if (
-      typeof valor !== 'object' ||
-      valor === null ||
-      Array.isArray(valor)
-    ) {
+    if (typeof valor !== 'object' || valor === null || Array.isArray(valor)) {
       throw this.invalid(`${campo} debe ser un objeto JSON.`);
     }
 
     return valor as JsonObject;
   }
 
-  private requireArray(
-    valor: unknown,
-    campo: string,
-    maximo: number,
-  ): unknown[] {
+  private requireArray(valor: unknown, campo: string, maximo: number): unknown[] {
     if (!Array.isArray(valor)) {
       throw this.invalid(`${campo} debe ser un arreglo.`);
     }
@@ -940,11 +832,7 @@ export class PlanningHttpMapper {
     return valor;
   }
 
-  private requireString(
-    valor: unknown,
-    campo: string,
-    maximo = MAXIMO_TEXTO,
-  ): string {
+  private requireString(valor: unknown, campo: string, maximo = MAXIMO_TEXTO): string {
     if (typeof valor !== 'string') {
       throw this.invalid(`${campo} debe ser texto.`);
     }
@@ -966,10 +854,7 @@ export class PlanningHttpMapper {
     return valor === undefined ? undefined : this.requireString(valor, campo);
   }
 
-  private optionalNullableString(
-    valor: unknown,
-    campo: string,
-  ): string | null {
+  private optionalNullableString(valor: unknown, campo: string): string | null {
     if (valor === undefined || valor === null) return null;
 
     return this.requireString(valor, campo);
@@ -989,57 +874,41 @@ export class PlanningHttpMapper {
     campo: string,
   ): void {
     const permitidasSet = new Set(permitidas);
-    const desconocidas = Object.keys(objeto).filter(
-      (clave) => !permitidasSet.has(clave),
-    );
+    const desconocidas = Object.keys(objeto).filter((clave) => !permitidasSet.has(clave));
 
     if (desconocidas.length > 0) {
-      throw this.invalid(
-        `${campo} contiene campos desconocidos: ${desconocidas.join(', ')}.`,
-      );
+      throw this.invalid(`${campo} contiene campos desconocidos: ${desconocidas.join(', ')}.`);
     }
   }
 
   private unidadInterna(nombre: string): string {
-    return (
-      UNIDAD_INTERNA_POR_NOMBRE.get(normalizarNombreUnidad(nombre)) ??
-      nombre.trim()
-    );
+    return UNIDAD_INTERNA_POR_NOMBRE.get(normalizarNombreUnidad(nombre)) ?? nombre.trim();
   }
 
   private unidadPublica(nombre: string): string {
     const nombreInterno = this.unidadInterna(nombre);
 
     return (
-      UNIDAD_PUBLICA_POR_NOMBRE_INTERNO.get(
-        normalizarNombreUnidad(nombreInterno),
-      ) ?? nombre.trim()
+      UNIDAD_PUBLICA_POR_NOMBRE_INTERNO.get(normalizarNombreUnidad(nombreInterno)) ?? nombre.trim()
     );
   }
 
   private textoPublico(texto: string): string {
     return REEMPLAZOS_UNIDADES_EN_TEXTO.reduce(
-      (resultado, { expresion, publico }) =>
-        resultado.replace(expresion, publico),
+      (resultado, { expresion, publico }) => resultado.replace(expresion, publico),
       texto,
     );
   }
 
   private invalid(message: string): HttpApiError {
-    return new HttpApiError(
-      400,
-      'SOLICITUD_INVALIDA',
-      this.textoPublico(message),
-    );
+    return new HttpApiError(400, 'SOLICITUD_INVALIDA', this.textoPublico(message));
   }
 
   private domainError(error: unknown): HttpApiError {
     return new HttpApiError(
       400,
       'SOLICITUD_INVALIDA',
-      this.textoPublico(
-        error instanceof Error ? error.message : 'La solicitud no es válida.',
-      ),
+      this.textoPublico(error instanceof Error ? error.message : 'La solicitud no es válida.'),
     );
   }
 }

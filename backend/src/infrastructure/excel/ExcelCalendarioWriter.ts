@@ -5,7 +5,6 @@ import ExcelJS from 'exceljs';
 import type { Cell, Font, RichText, Worksheet } from 'exceljs';
 
 import type { Calendario } from '../../domain/Calendario.js';
-import { Empleado } from '../../domain/Empleado.js';
 import { UnidadOperativa } from '../../domain/UnidadOperativa.js';
 import type { ReemplazoPlanificacion } from '../../domain/planning/ReemplazoPlanificacion.js';
 
@@ -46,8 +45,18 @@ const COLOR_TEXTO_TITULAR = 'FF8A8A8A';
 const CONFIGURACIONES_HOJAS: ReadonlyArray<ConfiguracionHoja> = [
   { nombreHoja: 'CACAO C1', nombreUnidad: 'CACAO PISTA', subtitulo: 'BOMBEROS', esBomberos: true },
   { nombreHoja: 'CAJA CACAO', nombreUnidad: 'CACAO CAJA', subtitulo: 'CAJEROS', esBomberos: false },
-  { nombreHoja: 'TRUCK STOP', nombreUnidad: 'TRUCK STOP PISTA', subtitulo: 'BOMBEROS', esBomberos: true },
-  { nombreHoja: 'CAJA TRUCK STOP', nombreUnidad: 'TRUCK STOP CAJA', subtitulo: 'CAJEROS', esBomberos: false },
+  {
+    nombreHoja: 'TRUCK STOP',
+    nombreUnidad: 'TRUCK STOP PISTA',
+    subtitulo: 'BOMBEROS',
+    esBomberos: true,
+  },
+  {
+    nombreHoja: 'CAJA TRUCK STOP',
+    nombreUnidad: 'TRUCK STOP CAJA',
+    subtitulo: 'CAJEROS',
+    esBomberos: false,
+  },
 ];
 
 const ESTADOS_EXPORTABLES: ReadonlyArray<EstadoExportable> = [
@@ -92,11 +101,15 @@ export class ExcelCalendarioWriter {
   ): Promise<Buffer> {
     const semanas = this.construirSemanas(opciones.mes, opciones.anio);
     const unidades = this.validarCalendario(calendario, opciones.mes, opciones.anio);
+    const totalDiasExportables = this.calcularTotalDiasExportables(
+      calendario,
+      opciones.mes,
+      opciones.anio,
+    );
     const reemplazosPorUnidad = this.validarReemplazos(
       unidades,
       opciones.reemplazos ?? [],
-      opciones.mes,
-      opciones.anio,
+      totalDiasExportables,
     );
     const workbook = new ExcelJS.Workbook();
 
@@ -212,7 +225,11 @@ export class ExcelCalendarioWriter {
             const nombre = nombres[indiceFilaEstado];
 
             if (nombre !== undefined) {
-              this.escribirAsignacion(cell, nombre, reemplazos, fecha.getDate());
+              const diaCalendario = this.indiceDiaCalendario(unidad, fecha, mes, anio);
+
+              if (diaCalendario !== null) {
+                this.escribirAsignacion(cell, nombre, reemplazos, diaCalendario);
+              }
             }
           }
 
@@ -238,7 +255,11 @@ export class ExcelCalendarioWriter {
     worksheet.mergeCells('A1:I1');
     worksheet.getCell('A1').value = titulo;
     worksheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
-    worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_TITULO } };
+    worksheet.getCell('A1').fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: COLOR_TITULO },
+    };
     worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
     worksheet.getRow(1).height = 28;
 
@@ -371,11 +392,13 @@ export class ExcelCalendarioWriter {
       for (const unidad of calendario.unidadesOperativas) {
         const nombre = this.normalizarTexto(unidad.nombre);
         if (!nombresEsperados.has(nombre)) {
-          throw new Error(`El exportador no admite la unidad operativa \"${unidad.nombre}\".`);
+          throw new Error(`El exportador no admite la unidad operativa "${unidad.nombre}".`);
         }
         for (const empleado of unidad.empleados) {
           if (empleado.totalDias() !== diasEnMes) {
-            throw new Error(`${empleado.nombre} debe contener los ${diasEnMes} estados de ${mes}/${anio}.`);
+            throw new Error(
+              `${empleado.nombre} debe contener los ${diasEnMes} estados de ${mes}/${anio}.`,
+            );
           }
         }
         unidades.set(nombre, unidad);
@@ -387,9 +410,11 @@ export class ExcelCalendarioWriter {
       throw new Error(`El calendario no comienza el 1/${mes}/${anio}.`);
     }
 
-    const totalDiasVisuales = Math.round(
-      (periodoOrigen.fechaFin.getTime() - periodoOrigen.fechaInicio.getTime()) / (24 * 60 * 60 * 1000),
-    ) + 1;
+    const totalDiasVisuales =
+      Math.round(
+        (periodoOrigen.fechaFin.getTime() - periodoOrigen.fechaInicio.getTime()) /
+          (24 * 60 * 60 * 1000),
+      ) + 1;
 
     for (const unidad of calendario.unidadesOperativas) {
       const nombre = this.normalizarTexto(unidad.nombre);
@@ -403,7 +428,9 @@ export class ExcelCalendarioWriter {
 
       for (const empleado of unidad.empleados) {
         if (empleado.totalDias() < totalDiasVisuales) {
-          throw new Error(`${empleado.nombre} debe contener los ${totalDiasVisuales} estados del período visual.`);
+          throw new Error(
+            `${empleado.nombre} debe contener los ${totalDiasVisuales} estados del período visual.`,
+          );
         }
         for (let dia = 1; dia <= totalDiasVisuales; dia += 1) {
           const estado = empleado.estadoDelDia(dia).valor;
@@ -425,13 +452,29 @@ export class ExcelCalendarioWriter {
     return unidades;
   }
 
+  private calcularTotalDiasExportables(calendario: Calendario, mes: number, anio: number): number {
+    const diasEnMes = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+    const periodoOrigen = calendario.obtenerPeriodoOrigen();
+
+    if (periodoOrigen === null) {
+      return diasEnMes;
+    }
+
+    const milisegundosPorDia = 24 * 60 * 60 * 1000;
+    const totalDiasVisuales =
+      Math.round(
+        (periodoOrigen.fechaFin.getTime() - periodoOrigen.fechaInicio.getTime()) /
+          milisegundosPorDia,
+      ) + 1;
+
+    return Math.max(diasEnMes, totalDiasVisuales);
+  }
+
   private validarReemplazos(
     unidades: ReadonlyMap<string, UnidadOperativa>,
     reemplazos: ReadonlyArray<ReemplazoPlanificacion>,
-    mes: number,
-    anio: number,
+    totalDiasExportables: number,
   ): Map<string, ReemplazoPlanificacion[]> {
-    const diasEnMes = new Date(anio, mes, 0).getDate();
     const resultado = new Map<string, ReemplazoPlanificacion[]>();
     const claves = new Set<string>();
 
@@ -440,31 +483,51 @@ export class ExcelCalendarioWriter {
       const unidad = unidades.get(nombreUnidad);
 
       if (!unidad) {
-        throw new Error(`El reemplazo de ${reemplazo.empleadoReemplazo} referencia la unidad inexistente "${reemplazo.unidadOperativa}".`);
+        throw new Error(
+          `El reemplazo de ${reemplazo.empleadoReemplazo} referencia la unidad inexistente "${reemplazo.unidadOperativa}".`,
+        );
       }
 
-      if (!Number.isInteger(reemplazo.dia) || reemplazo.dia < 1 || reemplazo.dia > diasEnMes) {
-        throw new Error(`El día ${reemplazo.dia} del reemplazo de ${reemplazo.empleadoReemplazo} está fuera de ${mes}/${anio}.`);
+      if (
+        !Number.isInteger(reemplazo.dia) ||
+        reemplazo.dia < 1 ||
+        reemplazo.dia > totalDiasExportables
+      ) {
+        throw new Error(
+          `El día ${reemplazo.dia} del reemplazo de ${reemplazo.empleadoReemplazo} está fuera del período visual de ${totalDiasExportables} días.`,
+        );
       }
 
       const empleadoReemplazo = unidad.empleados.find(
-        (empleado) => this.normalizarTexto(empleado.nombre) === this.normalizarTexto(reemplazo.empleadoReemplazo),
+        (empleado) =>
+          this.normalizarTexto(empleado.nombre) ===
+          this.normalizarTexto(reemplazo.empleadoReemplazo),
       );
 
       if (!empleadoReemplazo) {
-        throw new Error(`${reemplazo.empleadoReemplazo} no existe en ${unidad.nombre} para exportar su reemplazo.`);
+        throw new Error(
+          `${reemplazo.empleadoReemplazo} no existe en ${unidad.nombre} para exportar su reemplazo.`,
+        );
       }
 
       const estado = empleadoReemplazo.estadoDelDia(reemplazo.dia).valor;
 
       if (estado !== reemplazo.turno) {
-        throw new Error(`El reemplazo de ${reemplazo.empleadoReemplazo} no coincide con ${reemplazo.turno} el día ${reemplazo.dia} en ${unidad.nombre}.`);
+        throw new Error(
+          `El reemplazo de ${reemplazo.empleadoReemplazo} no coincide con ${reemplazo.turno} el día ${reemplazo.dia} en ${unidad.nombre}.`,
+        );
       }
 
-      const clave = [nombreUnidad, reemplazo.dia, this.normalizarTexto(reemplazo.empleadoReemplazo)].join('::');
+      const clave = [
+        nombreUnidad,
+        reemplazo.dia,
+        this.normalizarTexto(reemplazo.empleadoReemplazo),
+      ].join('::');
 
       if (claves.has(clave)) {
-        throw new Error(`El reemplazo de ${reemplazo.empleadoReemplazo} está duplicado el día ${reemplazo.dia} en ${unidad.nombre}.`);
+        throw new Error(
+          `El reemplazo de ${reemplazo.empleadoReemplazo} está duplicado el día ${reemplazo.dia} en ${unidad.nombre}.`,
+        );
       }
 
       claves.add(clave);
@@ -539,7 +602,9 @@ export class ExcelCalendarioWriter {
     const cantidadSemanas = Math.ceil((desplazamientoAlLunes + diasEnMes) / 7);
 
     if (cantidadSemanas > MAXIMO_SEMANAS_CALENDARIO) {
-      throw new Error(`Un mes calendario admite como máximo ${MAXIMO_SEMANAS_CALENDARIO} semanas; ${mes}/${anio} necesita ${cantidadSemanas}.`);
+      throw new Error(
+        `Un mes calendario admite como máximo ${MAXIMO_SEMANAS_CALENDARIO} semanas; ${mes}/${anio} necesita ${cantidadSemanas}.`,
+      );
     }
 
     return Array.from({ length: cantidadSemanas }, (_, indiceSemana) =>
