@@ -17,13 +17,15 @@ describe('ComodinesPlanificacion', () => {
     ]);
   });
 
-  it('rechaza registrar el mismo comodín dos veces en la unidad', () => {
+  it('rechaza registrar el mismo comodín dos veces en la misma unidad', () => {
     expect(() =>
       ComodinesPlanificacion.create([
         { unidadOperativa: 'Caja', empleado: 'Celio' },
         { unidadOperativa: 'CAJA', empleado: 'celio' },
       ]),
-    ).toThrow('Un empleado no puede registrarse dos veces como comodín.');
+    ).toThrow(
+      'Un empleado no puede registrarse dos veces como comodín en la misma unidad.',
+    );
   });
 
   it('rechaza empleados que no son comodines reales', () => {
@@ -34,12 +36,22 @@ describe('ComodinesPlanificacion', () => {
     ).toThrow('El empleado Rony no está autorizado como comodín.');
   });
 
-  it('rechaza asignar el mismo comodín a dos unidades distintas', () => {
-    expect(() =>
-      ComodinesPlanificacion.create([
-        { unidadOperativa: 'CACAO CAJA', empleado: 'Celio' },
-        { unidadOperativa: 'TRUCK STOP CAJA', empleado: ' celio ' },
-      ]),
-    ).toThrow('Un empleado no puede registrarse dos veces como comodín.');
+  it('permite que Celio esté disponible para varias unidades', () => {
+    const comodines = ComodinesPlanificacion.create([
+      { unidadOperativa: 'CACAO CAJA', empleado: 'Celio' },
+      { unidadOperativa: 'TRUCK STOP CAJA', empleado: 'Celio' },
+      { unidadOperativa: 'CACAO PISTA', empleado: 'Celio' },
+    ]);
+
+    expect(comodines.esComodin('CACAO CAJA', 'Celio')).toBe(true);
+    expect(comodines.esComodin('TRUCK STOP CAJA', 'Celio')).toBe(true);
+    expect(comodines.esComodin('CACAO PISTA', 'Celio')).toBe(true);
+  });
+
+  it('incluye las reglas automáticas de Celio y Lester sin selección manual', () => {
+    const comodines = ComodinesPlanificacion.reglasOperativas();
+
+    expect(comodines.esComodin('CACAO CAJA', 'Celio')).toBe(true);
+    expect(comodines.esComodin('TRUCK STOP PISTA', 'Lester')).toBe(true);
   });
 });

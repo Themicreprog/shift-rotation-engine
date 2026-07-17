@@ -1096,3 +1096,17 @@ footer span:first-child {
     grid-template-columns: 1fr;
   }
 }
+
+.business-rules-card {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border, #d9e1e8);
+  border-radius: 0.85rem;
+  background: rgba(241, 248, 244, 0.78);
+}
+
+.business-rules-card p {
+  margin: 0.25rem 0 0;
+}

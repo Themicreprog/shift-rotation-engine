@@ -16,25 +16,23 @@ const rutaJulio = path.resolve(
 );
 
 describe('planificación real de agosto', () => {
-  it('mantiene 3 bomberos por turno y cubre las cajas desde el primer día generado', async () => {
+  it('aplica cobertura variable, descansos y reservas automáticas desde el día generado', async () => {
     const calendario = await new ExcelCalendarioReader().leerCalendario(rutaJulio);
+    const periodo = PeriodoPlanificacion.create({
+      fechaInicio: new Date('2026-08-01T00:00:00.000Z'),
+      fechaFin: new Date('2026-08-31T00:00:00.000Z'),
+    });
     const resultado = crearCasoDeUsoPlanificacion().execute(
       new SolicitudPlanificacion(
         calendario,
-        PeriodoPlanificacion.create({
-          fechaInicio: new Date('2026-08-01T00:00:00.000Z'),
-          fechaFin: new Date('2026-08-31T00:00:00.000Z'),
-        }),
+        periodo,
         AlcanceOperativo.create({
           unidadesOperativas: calendario.unidadesOperativas.map(
             (unidad) => unidad.nombre,
           ),
         }),
         EventosPlanificacion.vacio(),
-        ComodinesPlanificacion.create([
-          { unidadOperativa: 'CACAO PISTA', empleado: 'Lester' },
-          { unidadOperativa: 'TRUCK STOP CAJA', empleado: 'Celio' },
-        ]),
+        ComodinesPlanificacion.vacio(),
       ),
     );
 
@@ -42,15 +40,71 @@ describe('planificación real de agosto', () => {
       const unidad = resultado.calendario.buscarUnidadOperativa(nombreUnidad)!;
 
       for (let dia = 3; dia <= 31; dia += 1) {
+        const fecha = periodo.fechaDelDia(dia);
         const turnoA = unidad.empleados.filter(
           (empleado) => empleado.estadoDelDia(dia).valor === 'TURNO A',
-        );
+        ).length;
         const turnoB = unidad.empleados.filter(
           (empleado) => empleado.estadoDelDia(dia).valor === 'TURNO B',
+        ).length;
+        const libres = unidad.empleados.filter(
+          (empleado) => empleado.estadoDelDia(dia).valor === 'LIBRE',
+        ).length;
+
+        if (fecha.getUTCDay() === 5 || fecha.getUTCDay() === 6) {
+          expect(turnoA, `${nombreUnidad}, día ${dia}, A`).toBeGreaterThanOrEqual(3);
+          expect(turnoB, `${nombreUnidad}, día ${dia}, B`).toBeGreaterThanOrEqual(4);
+          expect(libres, `${nombreUnidad}, día ${dia}, LIBRE`).toBe(0);
+        } else if (fecha.getUTCDay() === 0) {
+          expect(turnoA, `${nombreUnidad}, día ${dia}, A`).toBeGreaterThanOrEqual(2);
+          expect(turnoB, `${nombreUnidad}, día ${dia}, B`).toBeGreaterThanOrEqual(2);
+        } else {
+          expect(turnoA, `${nombreUnidad}, día ${dia}, A`).toBeGreaterThanOrEqual(3);
+          expect(turnoB, `${nombreUnidad}, día ${dia}, B`).toBeGreaterThanOrEqual(3);
+        }
+      }
+    }
+
+    for (const nombreUnidad of ['CACAO CAJA', 'TRUCK STOP CAJA']) {
+      const unidad = resultado.calendario.buscarUnidadOperativa(nombreUnidad)!;
+
+      for (let dia = 3; dia <= 31; dia += 1) {
+        expect(
+          unidad.empleados.filter(
+            (empleado) => empleado.estadoDelDia(dia).valor === 'TURNO A',
+          ),
+          `${nombreUnidad}, día ${dia}, A`,
+        ).toHaveLength(1);
+        expect(
+          unidad.empleados.filter(
+            (empleado) => empleado.estadoDelDia(dia).valor === 'TURNO B',
+          ),
+          `${nombreUnidad}, día ${dia}, B`,
+        ).toHaveLength(1);
+      }
+    }
+
+    for (let dia = 3; dia <= 31; dia += 1) {
+      if (periodo.fechaDelDia(dia).getUTCDay() !== 2) continue;
+
+      for (const unidad of resultado.calendario.unidadesOperativas) {
+        const celio = unidad.empleados.find(
+          (empleado) => empleado.nombre.toUpperCase() === 'CELIO',
         );
 
-        expect(turnoA, `${nombreUnidad}, día ${dia}, TURNO A`).toHaveLength(3);
-        expect(turnoB, `${nombreUnidad}, día ${dia}, TURNO B`).toHaveLength(3);
+        if (celio) expect(celio.estadoDelDia(dia).valor).toBe('OTRO');
+      }
+    }
+
+    for (const nombreUnidad of ['CACAO CAJA', 'TRUCK STOP CAJA']) {
+      const lester = resultado.calendario
+        .buscarUnidadOperativa(nombreUnidad)
+        ?.empleados.find((empleado) => empleado.nombre === 'Lester');
+
+      if (lester) {
+        for (let dia = 1; dia <= lester.totalDias(); dia += 1) {
+          expect(lester.estadoDelDia(dia).esAsignacionOperativa()).toBe(false);
+        }
       }
     }
 
@@ -60,17 +114,5 @@ describe('planificación real de agosto', () => {
     });
 
     expect(advertenciasGeneradas).toEqual([]);
-    expect(
-      resultado.advertencias.some((advertencia) =>
-        advertencia.startsWith('Jornada excesiva'),
-      ),
-    ).toBe(false);
-
-    expect(
-      resultado.calendario
-        .buscarUnidadOperativa('TRUCK STOP CAJA')
-        ?.empleados.find((empleado) => empleado.nombre === 'Celio')
-        ?.estadoDelDia(3).valor,
-    ).toBe('OTRO');
   });
 });

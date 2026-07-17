@@ -9,7 +9,6 @@ import { ValidadorCobertura } from '../../../src/application/planning/ValidadorC
 import { Empleado } from '../../../src/domain/Empleado.js';
 import { EstadoTurno } from '../../../src/domain/EstadoTurno.js';
 import { UnidadOperativa } from '../../../src/domain/UnidadOperativa.js';
-import { ComodinesPlanificacion } from '../../../src/domain/planning/ComodinesPlanificacion.js';
 import { EventoPlanificacion } from '../../../src/domain/planning/EventoPlanificacion.js';
 import { EventosPlanificacion } from '../../../src/domain/planning/EventosPlanificacion.js';
 import { PeriodoPlanificacion } from '../../../src/domain/planning/PeriodoPlanificacion.js';
@@ -48,13 +47,13 @@ const periodo = PeriodoPlanificacion.create({
 });
 
 describe('trazabilidad estructurada de cobertura', () => {
-  it('conserva al titular y el motivo cuando un comodín cubre vacaciones', () => {
+  it('conserva al titular cuando Edwin cubre vacaciones en Caja Cacao', () => {
     const unidad = UnidadOperativa.create({
       nombre: 'CACAO CAJA',
       empleados: [
         empleado('Natanael', 'TURNO A'),
         empleado('Rony', 'TURNO B'),
-        empleado('Lester', 'OTRO'),
+        empleado('Edwin', 'OTRO'),
       ],
     });
     const eventos = EventosPlanificacion.create([
@@ -71,9 +70,6 @@ describe('trazabilidad estructurada de cobertura', () => {
       unidad,
       periodo,
       eventos,
-      ComodinesPlanificacion.create([
-        { unidadOperativa: 'CACAO CAJA', empleado: 'Lester' },
-      ]),
     );
 
     expect(resultado.reemplazos).toHaveLength(1);
@@ -82,8 +78,8 @@ describe('trazabilidad estructurada de cobertura', () => {
       dia: 1,
       turno: 'TURNO A',
       empleadoTitular: 'Natanael',
-      empleadoReemplazo: 'Lester',
-      tipoCobertura: 'COMODIN',
+      empleadoReemplazo: 'Edwin',
+      tipoCobertura: 'FLEXIBLE',
       motivo: 'VACACIONES',
     });
     expect(resultado.vacantesPendientes).toEqual([]);

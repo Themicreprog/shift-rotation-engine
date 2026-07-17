@@ -22,7 +22,6 @@ import {
   importarCalendario,
 } from './api/planningApi'
 import type {
-  AsignacionComodinDto,
   EventoPlanificacionDto,
   ImportarCalendarioResponseDto,
   ResultadoPlanificacionDto,
@@ -37,8 +36,6 @@ interface BorradorEvento {
   fechaInicio: string
   fechaFin: string
 }
-
-type NombreComodin = AsignacionComodinDto['empleado']
 
 const MESES = [
   '',
@@ -63,11 +60,6 @@ const BORRADOR_VACIO: BorradorEvento = {
   fechaFin: '',
 }
 
-const NOMBRES_COMODINES: ReadonlyArray<NombreComodin> = ['Celio', 'Lester']
-const UNIDADES_COMODIN_VACIAS: Record<NombreComodin, string> = {
-  Celio: '',
-  Lester: '',
-}
 const UNIDAD_BASE_FLEXIBLE: Readonly<Record<string, string>> = {
   EDWIN: 'CACAO C1',
   JEFERSON: 'TRUCK STOP',
@@ -82,9 +74,6 @@ function App() {
   const [mes, setMes] = useState(new Date().getMonth() + 1)
   const [anio, setAnio] = useState(new Date().getFullYear())
   const [eventos, setEventos] = useState<EventoPlanificacionDto[]>([])
-  const [unidadesComodin, setUnidadesComodin] = useState<
-    Record<NombreComodin, string>
-  >({ ...UNIDADES_COMODIN_VACIAS })
   const [borrador, setBorrador] = useState<BorradorEvento>(BORRADOR_VACIO)
   const [operacion, setOperacion] = useState<Operacion>(null)
   const [error, setError] = useState<string | null>(null)
@@ -115,15 +104,6 @@ function App() {
       )
   }, [importado])
 
-  const opcionesComodin = useMemo(
-    () => obtenerUnidadesComodin(importado),
-    [importado],
-  )
-  const comodinesConfigurados = NOMBRES_COMODINES.flatMap((empleado) => {
-    const unidadOperativa = unidadesComodin[empleado]
-
-    return unidadOperativa ? [{ empleado, unidadOperativa }] : []
-  })
 
   const periodoTexto = `${MESES[mes]} ${anio}`
   const periodoSugerido = importado?.resumen.periodoDestinoSugerido
@@ -152,7 +132,6 @@ function App() {
       setImportado(null)
       setResultado(null)
       setEventos([])
-      setUnidadesComodin({ ...UNIDADES_COMODIN_VACIAS })
       setBorrador(BORRADOR_VACIO)
       setError('Selecciona un archivo de Excel con extensión .xlsx.')
       return
@@ -162,7 +141,6 @@ function App() {
     setImportado(null)
     setResultado(null)
     setEventos([])
-    setUnidadesComodin({ ...UNIDADES_COMODIN_VACIAS })
     setBorrador(BORRADOR_VACIO)
   }
 
@@ -179,9 +157,6 @@ function App() {
       setImportado(respuesta)
       setResultado(null)
       setEventos([])
-      setUnidadesComodin(
-        unidadesComodinIniciales(obtenerUnidadesComodin(respuesta)),
-      )
 
       if (sugerido) {
         setMes(sugerido.mes)
@@ -251,7 +226,7 @@ function App() {
         mes,
         anio,
         eventos,
-        comodines: comodinesConfigurados,
+        comodines: [],
       })
 
       setResultado(propuesta)
@@ -610,47 +585,23 @@ function App() {
                   </div>
                 )}
 
-                <div className="subsection-heading wildcard-heading">
+                <div className="business-rules-card">
+                  <ShieldCheck size={20} />
                   <div>
-                    <h3>Comodines disponibles</h3>
+                    <strong>Coberturas automáticas</strong>
                     <p>
-                      Indica su unidad actual; solo entrarán si existe un
-                      faltante real.
+                      Lester cubre únicamente vacaciones en pista. Celio cubre
+                      descansos de cajeros y puede apoyar pista, excepto los
+                      martes, cuando realiza la ruta de facturas. Edwin cubre
+                      vacaciones de Caja Cacao y Jeferson las de Caja Truck Stop.
                     </p>
                   </div>
-                  <span>{comodinesConfigurados.length}</span>
-                </div>
-
-                <div className="wildcard-grid">
-                  {NOMBRES_COMODINES.map((empleado) => (
-                    <label className="wildcard-field" key={empleado}>
-                      <span>{empleado}</span>
-                      <select
-                        disabled={controlesBloqueados}
-                        value={unidadesComodin[empleado]}
-                        onChange={(event) => {
-                          setUnidadesComodin((actuales) => ({
-                            ...actuales,
-                            [empleado]: event.target.value,
-                          }))
-                          setResultado(null)
-                        }}
-                      >
-                        <option value="">No disponible este mes</option>
-                        {opcionesComodin[empleado].map((unidad) => (
-                          <option key={unidad} value={unidad}>
-                            {unidad}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
                 </div>
 
                 <p className="business-note">
-                  Edwin y Jeferson solo se asignan a caja cuando cubren el
-                  descanso o las vacaciones de un cajero fijo. El sistema
-                  coordina automáticamente su salida del puesto habitual.
+                  Los descansos de pista se concentran entre lunes y jueves;
+                  el domingo puede operar con dos personas por turno. Viernes y
+                  sábado se priorizan cuatro personas en Turno B.
                 </p>
 
                 <button
@@ -941,39 +892,6 @@ function etiquetaMotivo(motivo: string): string {
   }
 
   return etiquetas[motivo] ?? motivo
-}
-
-function obtenerUnidadesComodin(
-  importado: ImportarCalendarioResponseDto | null,
-): Record<NombreComodin, string[]> {
-  const unidades: Record<NombreComodin, string[]> = {
-    Celio: [],
-    Lester: [],
-  }
-
-  if (!importado) return unidades
-
-  for (const unidad of importado.calendario.unidadesOperativas) {
-    for (const empleado of NOMBRES_COMODINES) {
-      const existe = unidad.empleados.some(
-        (candidato) =>
-          candidato.nombre.trim().toUpperCase() === empleado.toUpperCase(),
-      )
-
-      if (existe) unidades[empleado].push(unidad.nombre)
-    }
-  }
-
-  return unidades
-}
-
-function unidadesComodinIniciales(
-  opciones: Record<NombreComodin, string[]>,
-): Record<NombreComodin, string> {
-  return {
-    Celio: opciones.Celio.length === 1 ? (opciones.Celio[0] ?? '') : '',
-    Lester: opciones.Lester.length === 1 ? (opciones.Lester[0] ?? '') : '',
-  }
 }
 
 function esEmpleadoFlexible(nombre: string): boolean {

@@ -1,5 +1,6 @@
 import { AnalizadorEstadoFinalCalendario } from './AnalizadorEstadoFinalCalendario.js';
 import { PlanificacionInputValidator } from './PlanificacionInputValidator.js';
+import { PoliticaCoberturaOperativa } from './PoliticaCoberturaOperativa.js';
 import {
   PlanificadorUnidadOperativa,
   ResultadoPlanificadorUnidadOperativa,
@@ -12,6 +13,7 @@ import { Calendario } from '../../domain/Calendario.js';
 import { Empleado } from '../../domain/Empleado.js';
 import { EstadoTurno } from '../../domain/EstadoTurno.js';
 import { UnidadOperativa } from '../../domain/UnidadOperativa.js';
+import { ComodinesPlanificacion } from '../../domain/planning/ComodinesPlanificacion.js';
 import { PeriodoPlanificacion } from '../../domain/planning/PeriodoPlanificacion.js';
 import {
   ReemplazoPlanificacion,
@@ -44,6 +46,7 @@ export class PlanningEngine {
     private readonly planificadorUnidadOperativa: PlanificadorUnidadOperativa,
     private readonly validadorCobertura = new ValidadorCobertura(),
     private readonly validadorDescanso = new ValidadorDescanso(),
+    private readonly politicaCobertura = new PoliticaCoberturaOperativa(),
   ) {}
 
   execute(solicitud: SolicitudPlanificacion): ResultadoPlanificacion {
@@ -63,6 +66,9 @@ export class PlanningEngine {
     const periodoGeneracion = this.crearPeriodoGeneracion(
       solicitud.periodoDestino,
       diasHeredados,
+    );
+    const comodinesOperativos = solicitud.comodines.combinar(
+      ComodinesPlanificacion.reglasOperativas(),
     );
     const calendarioDestino = new Calendario(
       `PLANIFICACION-${anioDestino}-${String(mesDestino).padStart(2, '0')}-COMPLETO`,
@@ -92,19 +98,26 @@ export class PlanningEngine {
     this.analizadorEstadoFinalCalendario.analyze(solicitud.calendarioOrigen);
 
     const unidadesPreparadas = unidadesOrigen.map((unidadOrigen) =>
-      this.agregarReservaFlexibleDeCaja(unidadOrigen, unidadesOrigen),
+      this.prepararReservasEspeciales(unidadOrigen, unidadesOrigen),
     );
     const resultadosIniciales = unidadesPreparadas.map((unidadOrigen) =>
       this.planificadorUnidadOperativa.planificarConCobertura(
         unidadOrigen,
         periodoGeneracion,
         solicitud.eventos,
-        solicitud.comodines,
+        comodinesOperativos,
       ),
     );
-    const resultadosUnidades = this.coordinarFlexiblesEntrePistaYCaja(
+    const resultadosFlexibles = this.coordinarFlexiblesEntrePistaYCaja(
       resultadosIniciales,
       solicitud,
+      periodoGeneracion,
+      comodinesOperativos,
+    );
+    const resultadosUnidades = this.coordinarReservasEspeciales(
+      resultadosFlexibles,
+      periodoGeneracion,
+      comodinesOperativos,
     );
     const cambios: string[] = [];
     const advertencias: string[] = [];
@@ -141,7 +154,10 @@ export class PlanningEngine {
       const nombreUnidad = unidadCompleta.nombre;
       const incidenciasCobertura = this.validadorCobertura.validar(
         unidadCompleta,
-        this.obtenerCoberturaMinima(unidadCompleta),
+        (dia) => this.politicaCobertura.requerimiento(
+          unidadCompleta.nombre,
+          solicitud.periodoDestino.fechaDelDia(dia),
+        ),
       );
       const unidadParaDescanso = this.integrarTrabajoFlexibleEntreRoles(
         unidadCompleta,
@@ -182,12 +198,6 @@ export class PlanningEngine {
       advertencias,
       reemplazos,
     );
-  }
-
-  private obtenerCoberturaMinima(unidadOperativa: UnidadOperativa): number {
-    const nombre = unidadOperativa.nombre.toUpperCase();
-
-    return nombre.includes('CAJA') || nombre.includes('CAJER') ? 1 : 3;
   }
 
   private integrarTrabajoFlexibleEntreRoles(
@@ -452,6 +462,164 @@ export class PlanningEngine {
     );
   }
 
+  private prepararReservasEspeciales(
+    unidadOrigen: UnidadOperativa,
+    unidadesOrigen: ReadonlyArray<UnidadOperativa>,
+  ): UnidadOperativa {
+    let preparada = this.agregarReservaFlexibleDeCaja(
+      unidadOrigen,
+      unidadesOrigen,
+    );
+    const esCaja = this.politicaCobertura.esUnidadCaja(preparada.nombre);
+    const reservas = esCaja ? ['Celio'] : ['Celio', 'Lester'];
+
+    for (const nombreReserva of reservas) {
+      if (this.buscarEmpleado(preparada, nombreReserva)) {
+        continue;
+      }
+
+      const empleadoOrigen = unidadesOrigen
+        .map((unidad) => this.buscarEmpleado(unidad, nombreReserva))
+        .find((empleado) => empleado !== undefined);
+
+      if (!empleadoOrigen) {
+        continue;
+      }
+
+      preparada = UnidadOperativa.create({
+        nombre: preparada.nombre,
+        empleados: [...preparada.empleados, empleadoOrigen],
+      });
+    }
+
+    return preparada;
+  }
+
+  private coordinarReservasEspeciales(
+    resultadosIniciales: ReadonlyArray<ResultadoPlanificadorUnidadOperativa>,
+    periodoGeneracion: PeriodoPlanificacion,
+    comodines: ComodinesPlanificacion,
+  ): ResultadoPlanificadorUnidadOperativa[] {
+    const resultados = [...resultadosIniciales];
+
+    for (let pasada = 0; pasada < 2; pasada += 1) {
+      for (const nombreReserva of ['Celio', 'Lester'] as const) {
+        const totalDias = resultados
+          .map((resultado) =>
+            this.buscarEmpleado(resultado.unidadOperativa, nombreReserva)
+              ?.totalDias() ?? 0,
+          )
+          .reduce((maximo, actual) => Math.max(maximo, actual), 0);
+
+        for (let dia = 1; dia <= totalDias; dia += 1) {
+          const usos = resultados.flatMap((resultado, indiceResultado) =>
+            resultado.reemplazos
+              .filter(
+                (reemplazo) =>
+                  reemplazo.dia === dia &&
+                  this.sonIguales(reemplazo.empleadoReemplazo, nombreReserva),
+              )
+              .map((reemplazo) => ({ indiceResultado, reemplazo })),
+          );
+
+          if (usos.length <= 1) {
+            continue;
+          }
+
+          const ordenados = [...usos].sort(
+            (primero, segundo) =>
+              this.prioridadUsoReserva(nombreReserva, primero.reemplazo) -
+              this.prioridadUsoReserva(nombreReserva, segundo.reemplazo),
+          );
+          const conservar = ordenados[0];
+
+          for (const uso of ordenados.slice(1)) {
+            if (
+              conservar &&
+              uso.indiceResultado === conservar.indiceResultado &&
+              uso.reemplazo === conservar.reemplazo
+            ) {
+              continue;
+            }
+
+            const resultadoActual = resultados[uso.indiceResultado];
+
+            if (!resultadoActual) {
+              continue;
+            }
+
+            const unidadSinReserva = this.reemplazarEstado(
+              resultadoActual.unidadOperativa,
+              nombreReserva,
+              dia,
+              EstadoTurno.create('OTRO'),
+            );
+            const vacante: VacantePlanificacion = {
+              unidadOperativa: uso.reemplazo.unidadOperativa,
+              dia,
+              turno: uso.reemplazo.turno,
+              empleadoTitular: uso.reemplazo.empleadoTitular,
+              motivo: uso.reemplazo.motivo,
+            };
+            const reparacion = this.planificadorUnidadOperativa.repararCobertura(
+              unidadSinReserva,
+              comodines,
+              new Map([[dia, new Set([nombreReserva])]]),
+              [...resultadoActual.vacantesPendientes, vacante],
+              periodoGeneracion,
+            );
+
+            resultados[uso.indiceResultado] = {
+              ...reparacion,
+              cambios: [
+                ...resultadoActual.cambios.filter(
+                  (cambio) =>
+                    !(
+                      cambio.includes(nombreReserva) &&
+                      cambio.includes(`día ${dia}`)
+                    ),
+                ),
+                `Cobertura duplicada de ${nombreReserva} cancelada el día ${dia} en ${resultadoActual.unidadOperativa.nombre}.`,
+                ...reparacion.cambios,
+              ],
+              reemplazos: [
+                ...resultadoActual.reemplazos.filter(
+                  (reemplazo) => reemplazo !== uso.reemplazo,
+                ),
+                ...reparacion.reemplazos,
+              ],
+            };
+          }
+        }
+      }
+    }
+
+    return resultados;
+  }
+
+  private prioridadUsoReserva(
+    nombreReserva: string,
+    reemplazo: ReemplazoPlanificacion,
+  ): number {
+    const esCaja = this.politicaCobertura.esUnidadCaja(
+      reemplazo.unidadOperativa,
+    );
+
+    if (nombreReserva.toUpperCase() === 'CELIO') {
+      if (esCaja && reemplazo.motivo === 'DESCANSO') {
+        return 0;
+      }
+
+      if (!esCaja && reemplazo.motivo === 'VACACIONES') {
+        return 1;
+      }
+
+      return esCaja ? 4 : 2;
+    }
+
+    return !esCaja && reemplazo.motivo === 'VACACIONES' ? 0 : 10;
+  }
+
   private agregarReservaFlexibleDeCaja(
     unidadOrigen: UnidadOperativa,
     unidadesOrigen: ReadonlyArray<UnidadOperativa>,
@@ -487,6 +655,8 @@ export class PlanningEngine {
   private coordinarFlexiblesEntrePistaYCaja(
     resultadosIniciales: ReadonlyArray<ResultadoPlanificadorUnidadOperativa>,
     solicitud: SolicitudPlanificacion,
+    periodoGeneracion: PeriodoPlanificacion,
+    comodines: ComodinesPlanificacion,
   ): ResultadoPlanificadorUnidadOperativa[] {
     const resultados = [...resultadosIniciales];
 
@@ -520,6 +690,8 @@ export class PlanningEngine {
         resultadoCaja,
         coordinacion,
         solicitud,
+        periodoGeneracion,
+        comodines,
       );
 
       resultados[indicePista] = coordinadas.pista;
@@ -534,6 +706,8 @@ export class PlanningEngine {
     resultadoCaja: ResultadoPlanificadorUnidadOperativa,
     coordinacion: CoordinacionFlexible,
     solicitud: SolicitudPlanificacion,
+    periodoGeneracion: PeriodoPlanificacion,
+    comodines: ComodinesPlanificacion,
   ): {
     pista: ResultadoPlanificadorUnidadOperativa;
     caja: ResultadoPlanificadorUnidadOperativa;
@@ -580,10 +754,13 @@ export class PlanningEngine {
 
       if (
         estadoPista?.esAsignacionOperativa() &&
-        (this.puedeCederFlexible(unidadPista, dia, estadoPista.valor) ||
-          solicitud.comodines.empleadosDeUnidad(
-            coordinacion.unidadPista,
-          ).length > 0)
+        (this.puedeCederFlexible(
+          unidadPista,
+          dia,
+          estadoPista.valor,
+          periodoGeneracion,
+        ) ||
+          comodines.empleadosDeUnidad(coordinacion.unidadPista).length > 0)
       ) {
         const reemplazoPistaCancelado = resultadoPista.reemplazos.find(
           (reemplazo) =>
@@ -676,15 +853,17 @@ export class PlanningEngine {
 
     const reparacionPista = this.planificadorUnidadOperativa.repararCobertura(
       unidadPista,
-      solicitud.comodines,
+      comodines,
       new Map(),
       vacantesPista,
+      periodoGeneracion,
     );
     const reparacionCaja = this.planificadorUnidadOperativa.repararCobertura(
       unidadCaja,
-      solicitud.comodines,
+      comodines,
       exclusionesCaja,
       vacantesCaja,
+      periodoGeneracion,
     );
 
     return {
@@ -721,12 +900,20 @@ export class PlanningEngine {
     unidadPista: UnidadOperativa,
     dia: number,
     turno: string,
+    periodoGeneracion: PeriodoPlanificacion,
   ): boolean {
     const disponiblesEnTurno = unidadPista.empleados.filter(
       (empleado) => empleado.estadoDelDia(dia).valor === turno,
     ).length;
+    const requerimiento = this.politicaCobertura.requerimiento(
+      unidadPista.nombre,
+      periodoGeneracion.fechaDelDia(dia),
+    );
+    const minimo = turno === 'TURNO A'
+      ? requerimiento.turnoA
+      : requerimiento.turnoB;
 
-    return disponiblesEnTurno - 1 >= 3;
+    return disponiblesEnTurno - 1 >= minimo;
   }
 
   private reemplazarEstado(

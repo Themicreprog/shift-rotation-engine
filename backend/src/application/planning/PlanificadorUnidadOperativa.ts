@@ -2,6 +2,7 @@ import { AnalizadorEstadoFinalEmpleado } from './AnalizadorEstadoFinalEmpleado.j
 import { DecisorPrimerDiaContinuidadSimple } from './DecisorPrimerDiaContinuidadSimple.js';
 import { DistribuidorDiaLibre } from './DistribuidorDiaLibre.js';
 import { GeneradorRotacionSemanal } from './GeneradorRotacionSemanal.js';
+import { PoliticaCoberturaOperativa } from './PoliticaCoberturaOperativa.js';
 import {
   IncidenciaDescanso,
   ValidadorDescanso,
@@ -67,6 +68,7 @@ export class PlanificadorUnidadOperativa {
     private readonly distribuidorDiaLibre: DistribuidorDiaLibre,
     private readonly validadorCobertura: ValidadorCobertura,
     private readonly validadorDescanso = new ValidadorDescanso(),
+    private readonly politicaCobertura = new PoliticaCoberturaOperativa(),
   ) {}
 
   public planificar(
@@ -105,20 +107,14 @@ export class PlanificadorUnidadOperativa {
       empleadosEnRotacion,
     );
     const limitesDescanso = this.obtenerLimitesDescanso(empleadosEnRotacion);
-    const distribucionDiasLibres = this.esUnidadBomberos(
-      unidadOperativaOrigen.nombre,
-    )
-      ? this.distribuidorDiaLibre.distribuirCoordinado(
-          empleadosEnRotacion,
-          turnosIniciales,
-          3,
-          limitesDescanso,
-        )
-      : this.distribuidorDiaLibre.distribuirConContinuidad(
-          empleadosEnRotacion,
-          limitesDescanso,
-          turnosIniciales,
-        );
+    const distribucionDiasLibres = this.distribuirDiasLibres(
+      unidadOperativaOrigen,
+      periodoDestino,
+      empleadosEnRotacion,
+      turnosIniciales,
+      limitesDescanso,
+      eventos,
+    );
 
     // El orden y los nombres recibidos desde el calendario son la fuente de
     // verdad: así una sustitución manual no queda reemplazada por una lista
@@ -154,16 +150,20 @@ export class PlanificadorUnidadOperativa {
     const empleadosDestino = resultadosEmpleados.map(({ empleado }) => empleado);
     const vacantes = resultadosEmpleados.flatMap(({ vacantes }) => vacantes);
 
-    const unidadPlanificada = UnidadOperativa.create({
-      nombre: unidadOperativaOrigen.nombre,
-      empleados: empleadosDestino,
-    });
+    const unidadPlanificada = this.ajustarPrioridadTurnoBFinDeSemana(
+      UnidadOperativa.create({
+        nombre: unidadOperativaOrigen.nombre,
+        empleados: empleadosDestino,
+      }),
+      periodoDestino,
+    );
 
     return this.repararCobertura(
       unidadPlanificada,
       comodines,
       new Map(),
       vacantes,
+      periodoDestino,
     );
   }
 
@@ -172,25 +172,36 @@ export class PlanificadorUnidadOperativa {
     comodines: ComodinesPlanificacion = ComodinesPlanificacion.vacio(),
     exclusionesPorDia: ExclusionesCoberturaPorDia = new Map(),
     vacantes: ReadonlyArray<VacantePlanificacion> = [],
+    periodoDestino?: PeriodoPlanificacion,
   ): ResultadoPlanificadorUnidadOperativa {
-    const coberturaMinima = this.obtenerCoberturaMinima(unidadPlanificada);
     const resultadoConCobertura = this.cubrirFaltantesConCobertura(
       unidadPlanificada,
-      coberturaMinima,
       comodines,
       exclusionesPorDia,
       vacantes,
+      periodoDestino,
     );
 
+    const unidadFinal = periodoDestino === undefined
+      ? resultadoConCobertura.unidadOperativa
+      : this.ajustarPrioridadTurnoBFinDeSemana(
+          resultadoConCobertura.unidadOperativa,
+          periodoDestino,
+        );
+
     return {
-      unidadOperativa: resultadoConCobertura.unidadOperativa,
+      unidadOperativa: unidadFinal,
       cambios: resultadoConCobertura.cambios,
       incidenciasCobertura: this.validadorCobertura.validar(
-        resultadoConCobertura.unidadOperativa,
-        coberturaMinima,
+        unidadFinal,
+        (dia) => this.obtenerRequerimientoCobertura(
+          unidadFinal.nombre,
+          periodoDestino,
+          dia,
+        ),
       ),
       incidenciasDescanso: this.validadorDescanso.validar(
-        resultadoConCobertura.unidadOperativa,
+        unidadFinal,
       ),
       reemplazos: resultadoConCobertura.reemplazos,
       vacantesPendientes: resultadoConCobertura.vacantesPendientes,
@@ -199,10 +210,10 @@ export class PlanificadorUnidadOperativa {
 
   private cubrirFaltantesConCobertura(
     unidadPlanificada: UnidadOperativa,
-    coberturaMinima: number,
     comodines: ComodinesPlanificacion,
     exclusionesPorDia: ExclusionesCoberturaPorDia = new Map(),
     vacantes: ReadonlyArray<VacantePlanificacion> = [],
+    periodoDestino?: PeriodoPlanificacion,
   ): {
     unidadOperativa: UnidadOperativa;
     cambios: string[];
@@ -228,15 +239,28 @@ export class PlanificadorUnidadOperativa {
         estadosPorEmpleado,
         dia,
       );
+      const requerimiento = this.obtenerRequerimientoCobertura(
+        unidadPlanificada.nombre,
+        periodoDestino,
+        dia,
+      );
+      const turnosAReparar = requerimiento.turnoB > requerimiento.turnoA
+        ? (['TURNO B', 'TURNO A'] as const)
+        : (['TURNO A', 'TURNO B'] as const);
 
-      for (const turnoNecesitado of ['TURNO A', 'TURNO B'] as const) {
-        while (disponiblesPorTurno[turnoNecesitado] < coberturaMinima) {
-          const indiceVacante = vacantesPendientes.findIndex(
-            (vacante) =>
-              vacante.dia === dia &&
-              vacante.turno === turnoNecesitado &&
-              vacante.empleadoTitular !== null &&
-              vacante.motivo !== 'FALTANTE',
+      for (const turnoNecesitado of turnosAReparar) {
+        const minimoNecesitado =
+          turnoNecesitado === 'TURNO A'
+            ? requerimiento.turnoA
+            : requerimiento.turnoB;
+
+        while (disponiblesPorTurno[turnoNecesitado] < minimoNecesitado) {
+          const indiceVacante = this.buscarIndiceVacanteParaCobertura(
+            vacantesPendientes,
+            unidadPlanificada.nombre,
+            dia,
+            turnoNecesitado,
+            this.fechaDelDia(periodoDestino, dia),
           );
 
           if (indiceVacante < 0) {
@@ -258,6 +282,7 @@ export class PlanificadorUnidadOperativa {
             comodines,
             exclusionesPorDia,
             vacante,
+            this.fechaDelDia(periodoDestino, dia),
           );
 
           if (!candidato) {
@@ -315,6 +340,46 @@ export class PlanificadorUnidadOperativa {
     };
   }
 
+  private buscarIndiceVacanteParaCobertura(
+    vacantes: ReadonlyArray<VacantePlanificacion>,
+    nombreUnidadOperativa: string,
+    dia: number,
+    turnoNecesitado: 'TURNO A' | 'TURNO B',
+    fecha: Date,
+  ): number {
+    const exacta = vacantes.findIndex(
+      (vacante) =>
+        vacante.dia === dia &&
+        vacante.turno === turnoNecesitado &&
+        vacante.empleadoTitular !== null &&
+        vacante.motivo !== 'FALTANTE',
+    );
+
+    if (exacta >= 0) {
+      return exacta;
+    }
+
+    // Viernes y sábado la prioridad operativa es garantizar cuatro personas
+    // en TURNO B. Si una vacación dejó la dotación total en seis, la ausencia
+    // puede ser cubierta por Lester directamente en B aunque el titular
+    // perteneciera a A. No se inventa un faltante: se reutiliza la vacante
+    // real de vacaciones y se conserva su trazabilidad.
+    if (
+      turnoNecesitado === 'TURNO B' &&
+      this.esUnidadBomberos(nombreUnidadOperativa) &&
+      this.politicaCobertura.esViernesOSabado(fecha)
+    ) {
+      return vacantes.findIndex(
+        (vacante) =>
+          vacante.dia === dia &&
+          vacante.empleadoTitular !== null &&
+          vacante.motivo === 'VACACIONES',
+      );
+    }
+
+    return -1;
+  }
+
   private seleccionarCandidatoCobertura(
     nombreUnidadOperativa: string,
     empleados: ReadonlyArray<Empleado>,
@@ -324,9 +389,10 @@ export class PlanificadorUnidadOperativa {
     comodines: ComodinesPlanificacion,
     exclusionesPorDia: ExclusionesCoberturaPorDia,
     vacante: VacantePlanificacion,
+    fecha: Date,
   ): { nombre: string; prioridad: PrioridadCobertura } | null {
     for (const prioridad of ['FLEXIBLE', 'COMODIN'] as const) {
-      const candidato = empleados.find((empleado) => {
+      const candidatos = empleados.filter((empleado) => {
         const estados = estadosPorEmpleado.get(empleado.nombre);
 
         if (
@@ -369,8 +435,14 @@ export class PlanificadorUnidadOperativa {
           prioridad,
           comodines,
           vacante,
+          fecha,
         );
       });
+      const candidato = this.ordenarCandidatosCobertura(
+        candidatos,
+        vacante,
+        prioridad,
+      )[0];
 
       if (candidato) {
         return {
@@ -404,20 +476,24 @@ export class PlanificadorUnidadOperativa {
     prioridad: PrioridadCobertura,
     comodines: ComodinesPlanificacion,
     vacante: VacantePlanificacion,
+    fecha: Date,
   ): boolean {
     if (this.esEmpleadoFijo(nombreEmpleado)) {
       return false;
     }
 
+    const nombreNormalizado = nombreEmpleado.trim().toUpperCase();
+    const esCaja = this.politicaCobertura.esUnidadCaja(nombreUnidadOperativa);
+
     if (prioridad === 'FLEXIBLE') {
       return (
+        esCaja &&
+        vacante.motivo === 'VACACIONES' &&
+        vacante.empleadoTitular !== null &&
         this.esReservaFlexibleDeCaja(
           nombreUnidadOperativa,
           nombreEmpleado,
         ) &&
-        (vacante.motivo === 'DESCANSO' ||
-          vacante.motivo === 'VACACIONES') &&
-        vacante.empleadoTitular !== null &&
         this.esEmpleadoFijoDeUnidad(
           nombreUnidadOperativa,
           vacante.empleadoTitular,
@@ -425,11 +501,60 @@ export class PlanificadorUnidadOperativa {
       );
     }
 
-    return this.esEmpleadoComodin(
-      nombreUnidadOperativa,
-      nombreEmpleado,
-      comodines,
+    if (!comodines.esComodin(nombreUnidadOperativa, nombreEmpleado)) {
+      return false;
+    }
+
+    if (nombreNormalizado === 'LESTER') {
+      return (
+        !esCaja &&
+        (vacante.motivo === 'VACACIONES' ||
+          vacante.motivo === 'TRANSFERENCIA_FLEXIBLE')
+      );
+    }
+
+    if (nombreNormalizado !== 'CELIO' || this.politicaCobertura.esMartes(fecha)) {
+      return false;
+    }
+
+    if (esCaja) {
+      return vacante.motivo === 'DESCANSO';
+    }
+
+    return (
+      vacante.motivo === 'DESCANSO' ||
+      vacante.motivo === 'VACACIONES' ||
+      vacante.motivo === 'FERIADO' ||
+      vacante.motivo === 'FALTANTE' ||
+      vacante.motivo === 'TRANSFERENCIA_FLEXIBLE'
     );
+  }
+
+  private ordenarCandidatosCobertura(
+    candidatos: ReadonlyArray<Empleado>,
+    vacante: VacantePlanificacion,
+    prioridad: PrioridadCobertura,
+  ): Empleado[] {
+    if (prioridad !== 'COMODIN') {
+      return [...candidatos];
+    }
+
+    return [...candidatos].sort((primero, segundo) => {
+      const puntaje = (empleado: Empleado): number => {
+        const nombre = empleado.nombre.trim().toUpperCase();
+
+        if (
+          vacante.motivo === 'VACACIONES' ||
+          vacante.motivo === 'TRANSFERENCIA_FLEXIBLE'
+        ) {
+          return nombre === 'LESTER' ? 0 : nombre === 'CELIO' ? 1 : 10;
+        }
+
+        return nombre === 'CELIO' ? 0 : 10;
+      };
+
+      return puntaje(primero) - puntaje(segundo);
+    });
   }
 
   private esEmpleadoFijo(nombreEmpleado: string): boolean {
@@ -552,14 +677,6 @@ export class PlanificadorUnidadOperativa {
     return disponibles;
   }
 
-  private obtenerCoberturaMinima(unidadOperativa: UnidadOperativa): number {
-    const nombre = unidadOperativa.nombre.toUpperCase();
-
-    return nombre.includes('CAJA') || nombre.includes('CAJER')
-      ? 1
-      : 3;
-  }
-
   private normalizarEstacion(nombreUnidadOperativa: string): string {
     return nombreUnidadOperativa
       .trim()
@@ -570,6 +687,277 @@ export class PlanificadorUnidadOperativa {
       .trim();
   }
 
+
+  private distribuirDiasLibres(
+    unidadOperativa: UnidadOperativa,
+    periodoDestino: PeriodoPlanificacion,
+    empleados: ReadonlyArray<Empleado>,
+    turnosIniciales: ReadonlyMap<string, EstadoTurno>,
+    limitesDescanso: ReadonlyMap<string, number>,
+    eventos: EventosPlanificacion,
+  ): ReadonlyMap<string, number> {
+    if (this.esUnidadBomberos(unidadOperativa.nombre)) {
+      const posicionesDescansoPermitidas = new Set<number>();
+      const requerimientoPorPosicion = new Map<
+        number,
+        { turnoA: number; turnoB: number }
+      >();
+
+      for (let posicion = 0; posicion < 7; posicion += 1) {
+        const fecha = this.fechaPosicionSemanal(periodoDestino, posicion);
+
+        if (this.politicaCobertura.esDiaDescansoPermitido(fecha)) {
+          posicionesDescansoPermitidas.add(posicion);
+        }
+
+        const requerimiento = this.politicaCobertura.esViernesOSabado(fecha)
+          ? { turnoA: 3, turnoB: 3 }
+          : this.politicaCobertura.requerimiento(
+              unidadOperativa.nombre,
+              fecha,
+            );
+        requerimientoPorPosicion.set(posicion, requerimiento);
+      }
+
+      return this.distribuidorDiaLibre.distribuirCoordinado(
+        empleados,
+        turnosIniciales,
+        3,
+        limitesDescanso,
+        {
+          posicionesDescansoPermitidas,
+          requerimientoPorPosicion,
+        },
+      );
+    }
+
+    const estacion = this.normalizarEstacion(unidadOperativa.nombre);
+
+    if (
+      empleados.length === 2 &&
+      (estacion === 'CACAO' || estacion === 'TRUCK STOP')
+    ) {
+      let posicionTurnoA = this.posicionDeDiaSemana(
+        periodoDestino,
+        estacion === 'CACAO' ? 1 : 0,
+      );
+      let posicionTurnoB = this.posicionDeDiaSemana(
+        periodoDestino,
+        estacion === 'CACAO' ? 3 : 4,
+      );
+      const empleadoA = empleados.find(
+        (empleado) => turnosIniciales.get(empleado.nombre)?.valor === 'TURNO A',
+      );
+      const empleadoB = empleados.find(
+        (empleado) => turnosIniciales.get(empleado.nombre)?.valor === 'TURNO B',
+      );
+
+      if (empleadoA && empleadoB) {
+        const eventoAChocaConDescansoB = this.eventoCoincideConPosicionSemanal(
+          eventos,
+          empleadoA.nombre,
+          unidadOperativa.nombre,
+          periodoDestino,
+          posicionTurnoB,
+        );
+        const eventoBChocaConDescansoA = this.eventoCoincideConPosicionSemanal(
+          eventos,
+          empleadoB.nombre,
+          unidadOperativa.nombre,
+          periodoDestino,
+          posicionTurnoA,
+        );
+
+        // Si las vacaciones de un cajero coinciden con el descanso del otro,
+        // se intercambian los días base. Así Edwin/Jeferson cubren la vacación
+        // y Celio queda libre para cubrir el descanso en otra fecha o apoyar
+        // pista, sin crear dos ausencias simultáneas en caja.
+        if (eventoAChocaConDescansoB !== eventoBChocaConDescansoA) {
+          [posicionTurnoA, posicionTurnoB] = [
+            posicionTurnoB,
+            posicionTurnoA,
+          ];
+        }
+      }
+
+      return this.distribuidorDiaLibre.distribuirCajaEscalonada(
+        empleados,
+        turnosIniciales,
+        limitesDescanso,
+        posicionTurnoA,
+        posicionTurnoB,
+      );
+    }
+
+    return this.distribuidorDiaLibre.distribuirConContinuidad(
+      empleados,
+      limitesDescanso,
+      turnosIniciales,
+    );
+  }
+
+  private eventoCoincideConPosicionSemanal(
+    eventos: EventosPlanificacion,
+    nombreEmpleado: string,
+    unidadOperativa: string,
+    periodo: PeriodoPlanificacion,
+    posicionSemanal: number,
+  ): boolean {
+    for (let dia = posicionSemanal + 1; dia <= periodo.totalDias(); dia += 7) {
+      if (
+        eventos.activosParaEmpleadoEn(
+          nombreEmpleado,
+          periodo.fechaDelDia(dia),
+          unidadOperativa,
+        ).length > 0
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private posicionDeDiaSemana(
+    periodoDestino: PeriodoPlanificacion,
+    diaSemanaBuscado: number,
+  ): number {
+    for (let posicion = 0; posicion < 7; posicion += 1) {
+      if (
+        this.fechaPosicionSemanal(periodoDestino, posicion).getUTCDay() ===
+        diaSemanaBuscado
+      ) {
+        return posicion;
+      }
+    }
+
+    return 0;
+  }
+
+  private ajustarPrioridadTurnoBFinDeSemana(
+    unidad: UnidadOperativa,
+    periodoDestino: PeriodoPlanificacion,
+  ): UnidadOperativa {
+    if (!this.esUnidadBomberos(unidad.nombre)) {
+      return unidad;
+    }
+
+    const estadosPorEmpleado = new Map(
+      unidad.empleados.map((empleado) => [
+        empleado.nombre,
+        Array.from(
+          { length: empleado.totalDias() },
+          (_, indice) => empleado.estadoDelDia(indice + 1),
+        ),
+      ]),
+    );
+    const totalDias = unidad.empleados.at(0)?.totalDias() ?? 0;
+
+    for (let dia = 1; dia <= totalDias; dia += 1) {
+      const fecha = periodoDestino.fechaDelDia(dia);
+
+      if (!this.politicaCobertura.esViernesOSabado(fecha)) {
+        continue;
+      }
+
+      const disponibles = this.contarDisponibles(estadosPorEmpleado, dia);
+
+      while (disponibles['TURNO B'] < 4 && disponibles['TURNO A'] > 3) {
+        const candidatos = unidad.empleados
+          .filter((empleado) => {
+            if (this.esNombreEmpleadoComodin(empleado.nombre)) {
+              return false;
+            }
+
+            return estadosPorEmpleado.get(empleado.nombre)?.[dia - 1]?.valor ===
+              'TURNO A';
+          })
+          .sort((primero, segundo) => {
+            const puntaje = (empleado: Empleado): number => {
+              const estados = estadosPorEmpleado.get(empleado.nombre);
+              const anterior = estados?.[dia - 2]?.valor;
+              const siguiente = estados?.[dia]?.valor;
+
+              if (anterior === 'TURNO B') {
+                return 0;
+              }
+
+              if (
+                siguiente === 'LIBRE' ||
+                siguiente === 'OTRO' ||
+                siguiente === 'TURNO B' ||
+                siguiente === undefined
+              ) {
+                return 1;
+              }
+
+              return 5;
+            };
+
+            return puntaje(primero) - puntaje(segundo);
+          });
+        const candidato = candidatos[0];
+
+        if (!candidato) {
+          break;
+        }
+
+        const estados = estadosPorEmpleado.get(candidato.nombre);
+
+        if (!estados) {
+          break;
+        }
+
+        estados[dia - 1] = EstadoTurno.create('TURNO B');
+        disponibles['TURNO A'] -= 1;
+        disponibles['TURNO B'] += 1;
+      }
+    }
+
+    return UnidadOperativa.create({
+      nombre: unidad.nombre,
+      empleados: unidad.empleados.map((empleado) =>
+        Empleado.create({
+          nombre: empleado.nombre,
+          estadosPorDia: estadosPorEmpleado.get(empleado.nombre) ?? [],
+        }),
+      ),
+    });
+  }
+
+  private fechaPosicionSemanal(
+    periodoDestino: PeriodoPlanificacion,
+    posicion: number,
+  ): Date {
+    const fecha = new Date(periodoDestino.fechaInicio);
+    fecha.setUTCDate(fecha.getUTCDate() + posicion);
+    return fecha;
+  }
+
+  private obtenerRequerimientoCobertura(
+    nombreUnidadOperativa: string,
+    periodoDestino: PeriodoPlanificacion | undefined,
+    dia: number,
+  ): { turnoA: number; turnoB: number } {
+    if (periodoDestino === undefined) {
+      return this.politicaCobertura.esUnidadCaja(nombreUnidadOperativa)
+        ? { turnoA: 1, turnoB: 1 }
+        : { turnoA: 3, turnoB: 3 };
+    }
+
+    return this.politicaCobertura.requerimiento(
+      nombreUnidadOperativa,
+      periodoDestino.fechaDelDia(dia),
+    );
+  }
+
+  private fechaDelDia(
+    periodoDestino: PeriodoPlanificacion | undefined,
+    dia: number,
+  ): Date {
+    return periodoDestino?.fechaDelDia(dia) ??
+      new Date('2026-01-05T00:00:00.000Z');
+  }
 
   private obtenerTurnosIniciales(
     unidadOperativa: UnidadOperativa,
@@ -928,14 +1316,28 @@ export class PlanificadorUnidadOperativa {
     );
 
     const estadosConEventos = estados.map((estado, indice) => {
+      const fecha = periodoDestino.fechaDelDia(indice + 1);
       const eventosActivos = eventos.activosParaEmpleadoEn(
         empleadoOrigen.nombre,
-        periodoDestino.fechaDelDia(indice + 1),
+        fecha,
         unidadOperativa,
       );
       const evento = eventosActivos.at(-1);
 
-      return evento ? EstadoTurno.create(evento.tipo) : estado;
+      if (evento) {
+        return EstadoTurno.create(evento.tipo);
+      }
+
+      // Los martes Celio realiza la ruta administrativa de facturas. No se
+      // representa como turno ni como descanso: permanece en OTRO.
+      if (
+        empleadoOrigen.nombre.trim().toUpperCase() === 'CELIO' &&
+        this.politicaCobertura.esMartes(fecha)
+      ) {
+        return EstadoTurno.create('OTRO');
+      }
+
+      return estado;
     });
 
     return Empleado.create({

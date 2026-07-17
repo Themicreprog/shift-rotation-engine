@@ -258,121 +258,7 @@ describe('PlanificadorUnidadOperativa', () => {
     });
   });
 
-  it('reasigna a un flexible antes que a un comodín cuando no hay base disponible', () => {
-    const planificador = new PlanificadorUnidadOperativa(
-      new AnalizadorEstadoFinalEmpleado(),
-      new DecisorPrimerDiaContinuidadSimple(),
-      new GeneradorRotacionSemanal(),
-      new DistribuidorDiaLibre(),
-      new ValidadorCobertura(),
-    );
-    const unidad = UnidadOperativa.create({
-      nombre: 'CACAO CAJA',
-      empleados: [
-        Empleado.create({
-          nombre: 'Natanael',
-          estadosPorDia: [EstadoTurno.create('TURNO A')],
-        }),
-        Empleado.create({
-          nombre: 'Edwin',
-          estadosPorDia: [EstadoTurno.create('TURNO B')],
-        }),
-        Empleado.create({
-          nombre: 'Rony',
-          estadosPorDia: [EstadoTurno.create('TURNO B')],
-        }),
-        Empleado.create({
-          nombre: 'Celio',
-          estadosPorDia: [EstadoTurno.create('TURNO B')],
-        }),
-      ],
-    });
-
-    const resultado = planificador.planificarConCobertura(
-      unidad,
-      PeriodoPlanificacion.create({
-        fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
-        fechaFin: new Date('2026-07-01T00:00:00.000Z'),
-      }),
-      EventosPlanificacion.create([
-        EventoPlanificacion.create({
-          empleado: 'Natanael',
-          tipo: TipoEventoPlanificacion.VACACIONES,
-          fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
-          fechaFin: new Date('2026-07-01T00:00:00.000Z'),
-        }),
-      ]),
-      ComodinesPlanificacion.create([
-        { unidadOperativa: 'CACAO CAJA', empleado: 'Celio' },
-      ]),
-    );
-
-    const edwin = resultado.unidadOperativa.empleados.find(
-      (empleado) => empleado.nombre === 'Edwin',
-    );
-    const celio = resultado.unidadOperativa.empleados.find(
-      (empleado) => empleado.nombre === 'Celio',
-    );
-
-    expect(edwin?.estadoDelDia(1).valor).toBe('TURNO A');
-    expect(celio?.estadoDelDia(1).valor).toBe('OTRO');
-    expect(resultado.cambios).toContain(
-      'Flexible Edwin reasignado a TURNO A el día 1 en CACAO CAJA.',
-    );
-    expect(
-      resultado.cambios.some((cambio) =>
-        cambio.includes('Comodín Celio reasignado'),
-      ),
-    ).toBe(false);
-    expect(resultado.reemplazos).toContainEqual(
-      expect.objectContaining({
-        empleadoTitular: 'Natanael',
-        empleadoReemplazo: 'Edwin',
-        tipoCobertura: 'FLEXIBLE',
-        motivo: 'VACACIONES',
-      }),
-    );
-  });
-
-  it('usa al flexible para cubrir el descanso de un cajero fijo y registra al titular', () => {
-    const planificador = new PlanificadorUnidadOperativa(
-      new AnalizadorEstadoFinalEmpleado(),
-      new DecisorPrimerDiaContinuidadSimple(),
-      new GeneradorRotacionSemanal(),
-      new DistribuidorDiaLibre(),
-      new ValidadorCobertura(),
-    );
-    const unidad = UnidadOperativa.create({
-      nombre: 'CACAO CAJA',
-      empleados: ['Natanael', 'Rony', 'Edwin'].map((nombre, indice) =>
-        Empleado.create({
-          nombre,
-          estadosPorDia: [
-            EstadoTurno.create(indice === 1 ? 'TURNO B' : 'TURNO A'),
-          ],
-        }),
-      ),
-    });
-
-    const resultado = planificador.planificarConCobertura(
-      unidad,
-      PeriodoPlanificacion.create({
-        fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
-        fechaFin: new Date('2026-07-07T00:00:00.000Z'),
-      }),
-    );
-
-    expect(resultado.reemplazos).toContainEqual(
-      expect.objectContaining({
-        empleadoTitular: 'Rony',
-        empleadoReemplazo: 'Edwin',
-        tipoCobertura: 'FLEXIBLE',
-        motivo: 'DESCANSO',
-      }),
-    );
-  });
-
-  it('no usa al flexible para un feriado del cajero y pasa al comodín', () => {
+  it('usa a Edwin para vacaciones y evita un descanso simultáneo de caja', () => {
     const planificador = new PlanificadorUnidadOperativa(
       new AnalizadorEstadoFinalEmpleado(),
       new DecisorPrimerDiaContinuidadSimple(),
@@ -385,8 +271,68 @@ describe('PlanificadorUnidadOperativa', () => {
       empleados: [
         ['Natanael', 'TURNO A'],
         ['Rony', 'TURNO B'],
-        ['Edwin', 'LIBRE'],
-        ['Celio', 'LIBRE'],
+        ['Edwin', 'OTRO'],
+        ['Celio', 'OTRO'],
+      ].map(([nombre, estado]) =>
+        Empleado.create({
+          nombre: nombre!,
+          estadosPorDia: [EstadoTurno.create(estado!)],
+        }),
+      ),
+    });
+    const fecha = new Date('2026-07-01T00:00:00.000Z');
+    const resultado = planificador.planificarConCobertura(
+      unidad,
+      PeriodoPlanificacion.create({ fechaInicio: fecha, fechaFin: fecha }),
+      EventosPlanificacion.create([
+        EventoPlanificacion.create({
+          empleado: 'Natanael',
+          unidadOperativa: 'CACAO CAJA',
+          tipo: TipoEventoPlanificacion.VACACIONES,
+          fechaInicio: fecha,
+          fechaFin: fecha,
+        }),
+      ]),
+      ComodinesPlanificacion.reglasOperativas(),
+    );
+
+    expect(
+      resultado.unidadOperativa.empleados
+        .find((empleado) => empleado.nombre === 'Edwin')
+        ?.estadoDelDia(1).valor,
+    ).toBe('TURNO A');
+    expect(
+      resultado.unidadOperativa.empleados
+        .find((empleado) => empleado.nombre === 'Celio')
+        ?.estadoDelDia(1).valor,
+    ).toBe('OTRO');
+    expect(resultado.reemplazos).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          empleadoTitular: 'Natanael',
+          empleadoReemplazo: 'Edwin',
+          tipoCobertura: 'FLEXIBLE',
+          motivo: 'VACACIONES',
+        }),
+      ]),
+    );
+  });
+
+  it('usa a Celio para cubrir el descanso de un cajero fijo', () => {
+    const planificador = new PlanificadorUnidadOperativa(
+      new AnalizadorEstadoFinalEmpleado(),
+      new DecisorPrimerDiaContinuidadSimple(),
+      new GeneradorRotacionSemanal(),
+      new DistribuidorDiaLibre(),
+      new ValidadorCobertura(),
+    );
+    const unidad = UnidadOperativa.create({
+      nombre: 'CACAO CAJA',
+      empleados: [
+        ['Natanael', 'TURNO A'],
+        ['Rony', 'TURNO B'],
+        ['Edwin', 'OTRO'],
+        ['Celio', 'OTRO'],
       ].map(([nombre, estado]) =>
         Empleado.create({
           nombre: nombre!,
@@ -399,34 +345,79 @@ describe('PlanificadorUnidadOperativa', () => {
       unidad,
       PeriodoPlanificacion.create({
         fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
-        fechaFin: new Date('2026-07-01T00:00:00.000Z'),
+        fechaFin: new Date('2026-07-07T00:00:00.000Z'),
       }),
+      EventosPlanificacion.vacio(),
+      ComodinesPlanificacion.reglasOperativas(),
+    );
+
+    expect(resultado.reemplazos).toContainEqual(
+      expect.objectContaining({
+        empleadoTitular: 'Rony',
+        empleadoReemplazo: 'Celio',
+        tipoCobertura: 'COMODIN',
+        motivo: 'DESCANSO',
+      }),
+    );
+    expect(
+      resultado.reemplazos.some(
+        (reemplazo) =>
+          reemplazo.empleadoReemplazo === 'Edwin' &&
+          reemplazo.motivo === 'DESCANSO',
+      ),
+    ).toBe(false);
+  });
+
+  it('no usa a Edwin, Celio ni Lester para cubrir un feriado de caja', () => {
+    const planificador = new PlanificadorUnidadOperativa(
+      new AnalizadorEstadoFinalEmpleado(),
+      new DecisorPrimerDiaContinuidadSimple(),
+      new GeneradorRotacionSemanal(),
+      new DistribuidorDiaLibre(),
+      new ValidadorCobertura(),
+    );
+    const unidad = UnidadOperativa.create({
+      nombre: 'CACAO CAJA',
+      empleados: [
+        ['Natanael', 'TURNO A'],
+        ['Rony', 'TURNO B'],
+        ['Edwin', 'OTRO'],
+        ['Celio', 'OTRO'],
+        ['Lester', 'OTRO'],
+      ].map(([nombre, estado]) =>
+        Empleado.create({
+          nombre: nombre!,
+          estadosPorDia: [EstadoTurno.create(estado!)],
+        }),
+      ),
+    });
+    const fecha = new Date('2026-07-01T00:00:00.000Z');
+    const resultado = planificador.planificarConCobertura(
+      unidad,
+      PeriodoPlanificacion.create({ fechaInicio: fecha, fechaFin: fecha }),
       EventosPlanificacion.create([
         EventoPlanificacion.create({
           empleado: 'Natanael',
+          unidadOperativa: 'CACAO CAJA',
           tipo: TipoEventoPlanificacion.FERIADO,
-          fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
-          fechaFin: new Date('2026-07-01T00:00:00.000Z'),
+          fechaInicio: fecha,
+          fechaFin: fecha,
         }),
       ]),
-      ComodinesPlanificacion.create([
-        { unidadOperativa: 'CACAO CAJA', empleado: 'Celio' },
-      ]),
+      ComodinesPlanificacion.reglasOperativas(),
     );
 
     expect(
-      resultado.unidadOperativa.empleados
-        .find((empleado) => empleado.nombre === 'Edwin')
-        ?.estadoDelDia(1).valor,
-    ).toBe('OTRO');
-    expect(resultado.reemplazos).toContainEqual(
-      expect.objectContaining({
-        empleadoTitular: 'Natanael',
-        empleadoReemplazo: 'Celio',
-        tipoCobertura: 'COMODIN',
-        motivo: 'FERIADO',
-      }),
-    );
+      resultado.reemplazos.some(
+        (reemplazo) => reemplazo.empleadoTitular === 'Natanael',
+      ),
+    ).toBe(false);
+    expect(resultado.incidenciasCobertura).toContainEqual({
+      dia: 1,
+      turno: 'TURNO A',
+      requeridos: 1,
+      disponibles: 0,
+    });
   });
 
   it('sustituye únicamente al ausente con un comodín sin mover al equipo base', () => {
@@ -612,7 +603,7 @@ describe('PlanificadorUnidadOperativa', () => {
     expect(resultado.cambios).toEqual([]);
   });
 
-  it('activa un comodín válido solo cuando existe un faltante', () => {
+  it('mantiene a Lester fuera de caja aunque exista una vacación', () => {
     const planificador = new PlanificadorUnidadOperativa(
       new AnalizadorEstadoFinalEmpleado(),
       new DecisorPrimerDiaContinuidadSimple(),
@@ -633,36 +624,36 @@ describe('PlanificadorUnidadOperativa', () => {
         }),
         Empleado.create({
           nombre: 'Lester',
-          estadosPorDia: [EstadoTurno.create('TURNO B')],
+          estadosPorDia: [EstadoTurno.create('OTRO')],
         }),
       ],
     });
-
+    const fecha = new Date('2026-07-01T00:00:00.000Z');
     const resultado = planificador.planificarConCobertura(
       unidad,
-      PeriodoPlanificacion.create({
-        fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
-        fechaFin: new Date('2026-07-01T00:00:00.000Z'),
-      }),
+      PeriodoPlanificacion.create({ fechaInicio: fecha, fechaFin: fecha }),
       EventosPlanificacion.create([
         EventoPlanificacion.create({
           empleado: 'Natanael',
+          unidadOperativa: 'CACAO CAJA',
           tipo: TipoEventoPlanificacion.VACACIONES,
-          fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
-          fechaFin: new Date('2026-07-01T00:00:00.000Z'),
+          fechaInicio: fecha,
+          fechaFin: fecha,
         }),
       ]),
-      ComodinesPlanificacion.create([
-        { unidadOperativa: 'CACAO CAJA', empleado: 'Lester' },
-      ]),
+      ComodinesPlanificacion.reglasOperativas(),
     );
 
-    const lester = resultado.unidadOperativa.empleados.find(
-      (empleado) => empleado.nombre === 'Lester',
-    );
-
-    expect(lester?.estadoDelDia(1).valor).toBe('TURNO A');
-    expect(resultado.incidenciasCobertura).toHaveLength(0);
+    expect(
+      resultado.unidadOperativa.empleados
+        .find((empleado) => empleado.nombre === 'Lester')
+        ?.estadoDelDia(1).valor,
+    ).toBe('OTRO');
+    expect(
+      resultado.reemplazos.some(
+        (reemplazo) => reemplazo.empleadoReemplazo === 'Lester',
+      ),
+    ).toBe(false);
   });
 
   it('conserva una sustitucion manual de la rotacion de CACAO', () => {
@@ -745,7 +736,7 @@ describe('PlanificadorUnidadOperativa', () => {
     ]);
   });
 
-  it('coordina los descansos de bomberos sin bajar de 3 por turno', () => {
+  it('distribuye descansos con refuerzo de viernes y sábado y mínimo dominical', () => {
     const planificador = new PlanificadorUnidadOperativa(
       new AnalizadorEstadoFinalEmpleado(),
       new DecisorPrimerDiaContinuidadSimple(),
@@ -765,36 +756,47 @@ describe('PlanificadorUnidadOperativa', () => {
         }),
       ),
     });
-
-    const resultado = planificador.planificar(
-      unidad,
-      PeriodoPlanificacion.create({
-        fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
-        fechaFin: new Date('2026-07-07T00:00:00.000Z'),
-      }),
-    );
+    const periodo = PeriodoPlanificacion.create({
+      fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
+      fechaFin: new Date('2026-07-07T00:00:00.000Z'),
+    });
+    const resultado = planificador.planificar(unidad, periodo);
 
     for (let dia = 1; dia <= 7; dia += 1) {
+      const fecha = periodo.fechaDelDia(dia);
       const estados = resultado.empleados.map(
         (empleado) => empleado.estadoDelDia(dia).valor,
       );
+      const turnoA = estados.filter((estado) => estado === 'TURNO A').length;
+      const turnoB = estados.filter((estado) => estado === 'TURNO B').length;
+      const libres = estados.filter((estado) => estado === 'LIBRE').length;
 
-      expect(estados.filter((estado) => estado === 'TURNO A')).toHaveLength(3);
-      expect(estados.filter((estado) => estado === 'TURNO B')).toHaveLength(3);
-      expect(estados.filter((estado) => estado === 'LIBRE')).toHaveLength(1);
+      if (fecha.getUTCDay() === 5 || fecha.getUTCDay() === 6) {
+        expect(turnoA).toBe(3);
+        expect(turnoB).toBe(4);
+        expect(libres).toBe(0);
+      } else if (fecha.getUTCDay() === 0) {
+        expect(turnoA).toBe(2);
+        expect(turnoB).toBe(2);
+        expect(libres).toBe(3);
+      } else {
+        expect(turnoA).toBe(3);
+        expect(turnoB).toBe(3);
+        expect(libres).toBe(1);
+      }
     }
 
     for (const empleado of resultado.empleados) {
-      const descansos = Array.from(
-        { length: 7 },
-        (_, indice) => empleado.estadoDelDia(indice + 1).valor,
-      ).filter((estado) => estado === 'LIBRE');
-
-      expect(descansos).toHaveLength(1);
+      expect(
+        Array.from(
+          { length: 7 },
+          (_, indice) => empleado.estadoDelDia(indice + 1).valor,
+        ).filter((estado) => estado === 'LIBRE'),
+      ).toHaveLength(1);
     }
   });
 
-  it('mantiene al comodín fuera de rotación después de seis coberturas', () => {
+  it('usa a Lester seis días por vacaciones de pista y lo deja fuera el domingo', () => {
     const planificador = new PlanificadorUnidadOperativa(
       new AnalizadorEstadoFinalEmpleado(),
       new DecisorPrimerDiaContinuidadSimple(),
@@ -803,67 +805,65 @@ describe('PlanificadorUnidadOperativa', () => {
       new ValidadorCobertura(),
     );
     const unidad = UnidadOperativa.create({
-      nombre: 'CACAO CAJA',
+      nombre: 'CACAO PISTA',
       empleados: [
+        ['Jose', 'TURNO A'],
+        ['Mario', 'TURNO A'],
+        ['Edwin', 'TURNO A'],
+        ['Rene', 'TURNO A'],
+        ['Luis D', 'TURNO B'],
+        ['Julio', 'TURNO B'],
+        ['Joel', 'TURNO B'],
+        ['Lester', 'OTRO'],
+      ].map(([nombre, estado]) =>
         Empleado.create({
-          nombre: 'Natanael',
-          estadosPorDia: [EstadoTurno.create('TURNO A')],
+          nombre: nombre!,
+          estadosPorDia: [EstadoTurno.create(estado!)],
         }),
-        Empleado.create({
-          nombre: 'Rony',
-          estadosPorDia: [EstadoTurno.create('TURNO B')],
-        }),
-        Empleado.create({
-          nombre: 'Lester',
-          estadosPorDia: [EstadoTurno.create('LIBRE')],
-        }),
-      ],
+      ),
     });
     const periodo = PeriodoPlanificacion.create({
-      fechaInicio: new Date('2026-07-01T00:00:00.000Z'),
-      fechaFin: new Date('2026-07-07T00:00:00.000Z'),
+      fechaInicio: new Date('2026-08-03T00:00:00.000Z'),
+      fechaFin: new Date('2026-08-09T00:00:00.000Z'),
     });
-
     const resultado = planificador.planificarConCobertura(
       unidad,
       periodo,
       EventosPlanificacion.create([
         EventoPlanificacion.create({
-          empleado: 'Natanael',
+          empleado: 'Jose',
+          unidadOperativa: 'CACAO PISTA',
           tipo: TipoEventoPlanificacion.VACACIONES,
           fechaInicio: periodo.fechaInicio,
           fechaFin: periodo.fechaFin,
         }),
       ]),
-      ComodinesPlanificacion.create([
-        { unidadOperativa: 'CACAO CAJA', empleado: 'Lester' },
-      ]),
+      ComodinesPlanificacion.reglasOperativas(),
     );
     const lester = resultado.unidadOperativa.empleados.find(
       (empleado) => empleado.nombre === 'Lester',
-    );
+    )!;
 
     expect(
       Array.from(
         { length: 7 },
-        (_, indice) => lester?.estadoDelDia(indice + 1).valor,
+        (_, indice) => lester.estadoDelDia(indice + 1).valor,
       ),
     ).toEqual([
       'TURNO A',
       'TURNO A',
       'TURNO A',
       'TURNO A',
-      'TURNO A',
-      'TURNO A',
+      'TURNO B',
+      'TURNO B',
       'OTRO',
     ]);
-    expect(resultado.incidenciasDescanso).toEqual([]);
-    expect(resultado.incidenciasCobertura).toContainEqual({
-      dia: 7,
-      turno: 'TURNO A',
-      requeridos: 1,
-      disponibles: 0,
-    });
+    expect(resultado.incidenciasCobertura).toEqual([]);
+    expect(
+      resultado.reemplazos.filter(
+        (reemplazo) => reemplazo.empleadoReemplazo === 'Lester',
+      ),
+    ).toHaveLength(6);
   });
 
   it('no usa un comodin configurado para otra unidad', () => {

@@ -4,6 +4,7 @@ export interface AsignacionComodinPlanificacion {
 }
 
 const NOMBRES_COMODINES = new Set(['CELIO', 'LESTER']);
+const UNIDAD_GLOBAL = '*';
 
 export class ComodinesPlanificacion {
   private constructor(
@@ -32,15 +33,26 @@ export class ComodinesPlanificacion {
       return { unidadOperativa, empleado };
     });
 
-    const claves = normalizadas.map((asignacion) =>
-      asignacion.empleado.replace(/\s+/g, ' ').toUpperCase(),
+    const claves = normalizadas.map(
+      (asignacion) =>
+        `${asignacion.unidadOperativa.replace(/\s+/g, ' ').toUpperCase()}::${asignacion.empleado.replace(/\s+/g, ' ').toUpperCase()}`,
     );
 
     if (new Set(claves).size !== claves.length) {
-      throw new Error('Un empleado no puede registrarse dos veces como comodín.');
+      throw new Error(
+        'Un empleado no puede registrarse dos veces como comodín en la misma unidad.',
+      );
     }
 
     return new ComodinesPlanificacion(normalizadas);
+  }
+
+  /** Reglas fijas confirmadas: Celio y Lester son reservas globales. */
+  public static reglasOperativas(): ComodinesPlanificacion {
+    return new ComodinesPlanificacion([
+      { unidadOperativa: UNIDAD_GLOBAL, empleado: 'Celio' },
+      { unidadOperativa: UNIDAD_GLOBAL, empleado: 'Lester' },
+    ]);
   }
 
   public static vacio(): ComodinesPlanificacion {
@@ -51,25 +63,40 @@ export class ComodinesPlanificacion {
     return this.asignaciones.map((asignacion) => ({ ...asignacion }));
   }
 
+  public combinar(otro: ComodinesPlanificacion): ComodinesPlanificacion {
+    const unicas = new Map<string, AsignacionComodinPlanificacion>();
+
+    for (const asignacion of [...this.listar(), ...otro.listar()]) {
+      const clave = `${asignacion.unidadOperativa.toUpperCase()}::${asignacion.empleado.toUpperCase()}`;
+      unicas.set(clave, asignacion);
+    }
+
+    return new ComodinesPlanificacion([...unicas.values()]);
+  }
+
   public empleadosDeUnidad(nombreUnidadOperativa: string): ReadonlyArray<string> {
     const unidadNormalizada = nombreUnidadOperativa.trim().toUpperCase();
 
-    return this.asignaciones
-      .filter(
-        (asignacion) =>
-          asignacion.unidadOperativa.toUpperCase() === unidadNormalizada,
-      )
-      .map((asignacion) => asignacion.empleado);
+    return [...new Set(
+      this.asignaciones
+        .filter((asignacion) => {
+          const unidadAsignada = asignacion.unidadOperativa.toUpperCase();
+          return unidadAsignada === UNIDAD_GLOBAL || unidadAsignada === unidadNormalizada;
+        })
+        .map((asignacion) => asignacion.empleado),
+    )];
   }
 
   public esComodin(nombreUnidadOperativa: string, nombreEmpleado: string): boolean {
     const unidadNormalizada = nombreUnidadOperativa.trim().toUpperCase();
     const empleadoNormalizado = nombreEmpleado.trim().toUpperCase();
 
-    return this.asignaciones.some(
-      (asignacion) =>
-        asignacion.unidadOperativa.toUpperCase() === unidadNormalizada &&
-        asignacion.empleado.toUpperCase() === empleadoNormalizado,
-    );
+    return this.asignaciones.some((asignacion) => {
+      const unidadAsignada = asignacion.unidadOperativa.toUpperCase();
+      return (
+        (unidadAsignada === UNIDAD_GLOBAL || unidadAsignada === unidadNormalizada) &&
+        asignacion.empleado.toUpperCase() === empleadoNormalizado
+      );
+    });
   }
 }

@@ -270,6 +270,10 @@ describe('PlanningEngine', () => {
             nombre: 'Rony',
             estadosPorDia: [EstadoTurno.create('TURNO B')],
           }),
+          Empleado.create({
+            nombre: 'Celio',
+            estadosPorDia: [EstadoTurno.create('OTRO')],
+          }),
         ],
       }),
     );
@@ -316,12 +320,16 @@ describe('PlanningEngine', () => {
     const edwinCaja = caja.empleados.find(
       (empleado) => empleado.nombre === 'Edwin',
     )!;
+    const celio = pista.empleados.find(
+      (empleado) => empleado.nombre === 'Celio',
+    )!;
     const lester = pista.empleados.find(
       (empleado) => empleado.nombre === 'Lester',
     )!;
 
     expect(edwinPista.estadoDelDia(1).valor).toBe('OTRO');
     expect(edwinCaja.estadoDelDia(1).valor).toBe('TURNO A');
+    expect(celio.estadoDelDia(1).valor).toBe('OTRO');
     expect(lester.estadoDelDia(1).valor).toBe('TURNO A');
     expect(resultado.cambios).toContain(
       'Flexible Edwin reasignado a TURNO A el día 1 en CACAO CAJA.',
@@ -350,7 +358,7 @@ describe('PlanningEngine', () => {
     );
   });
 
-  it('cancela la cobertura de caja durante el descanso de pista y usa el comodín', () => {
+  it('no usa a Celio para vacaciones de caja cuando el flexible está descansando', () => {
     const calendario = new Calendario('JUNIO 2026');
     const empleadosPista = [
       ['Jose', 'TURNO A'],
@@ -387,7 +395,7 @@ describe('PlanningEngine', () => {
           }),
           Empleado.create({
             nombre: 'Celio',
-            estadosPorDia: [EstadoTurno.create('LIBRE')],
+            estadosPorDia: [EstadoTurno.create('OTRO')],
           }),
         ],
       }),
@@ -411,9 +419,6 @@ describe('PlanningEngine', () => {
           fechaInicio: fechaDescanso,
           fechaFin: fechaDescanso,
         }),
-      ]),
-      ComodinesPlanificacion.create([
-        { unidadOperativa: 'CACAO CAJA', empleado: 'Celio' },
       ]),
     );
     const engine = new PlanningEngine(
@@ -445,31 +450,17 @@ describe('PlanningEngine', () => {
 
     expect(edwinPista.estadoDelDia(5).valor).toBe('LIBRE');
     expect(edwinCaja.estadoDelDia(5).valor).toBe('OTRO');
-    expect(celio.estadoDelDia(5).valor).toBe('TURNO A');
-    expect(resultado.cambios).toContain(
-      'Cobertura de Edwin cancelada en CACAO CAJA el día 5 para respetar su descanso o evento en CACAO PISTA.',
-    );
-    expect(resultado.cambios).not.toContain(
-      'Flexible Edwin reasignado a TURNO A el día 5 en CACAO CAJA.',
-    );
-    expect(resultado.cambios).toContain(
-      'Comodín Celio reasignado a TURNO A el día 5 en CACAO CAJA.',
-    );
-    expect(resultado.reemplazos).not.toContainEqual(
-      expect.objectContaining({
-        unidadOperativa: 'CACAO CAJA',
-        dia: 5,
-        empleadoReemplazo: 'Edwin',
-      }),
-    );
-    expect(resultado.reemplazos).toContainEqual(
-      expect.objectContaining({
-        unidadOperativa: 'CACAO CAJA',
-        dia: 5,
-        empleadoTitular: 'Natanael',
-        empleadoReemplazo: 'Celio',
-        motivo: 'VACACIONES',
-      }),
+    expect(celio.estadoDelDia(5).valor).toBe('OTRO');
+    expect(
+      resultado.reemplazos.some(
+        (reemplazo) =>
+          reemplazo.unidadOperativa === 'CACAO CAJA' &&
+          reemplazo.dia === 5 &&
+          reemplazo.empleadoTitular === 'Natanael',
+      ),
+    ).toBe(false);
+    expect(resultado.advertencias).toContain(
+      'Cobertura insuficiente en CACAO CAJA: día 5, TURNO A (0/1).',
     );
   });
 
@@ -482,7 +473,7 @@ describe('PlanningEngine', () => {
     });
     const estadosFinales = [
       ['Jose', 'TURNO A'],
-      ['Mario', 'TURNO A'],
+      ['Mario', 'LIBRE'],
       ['Rene', 'TURNO B'],
       ['Julio', 'TURNO B'],
       ['Luis D', 'LIBRE'],
@@ -533,10 +524,7 @@ describe('PlanningEngine', () => {
 
     expect(resultado.conflictos).toEqual([]);
     expect(resultado.advertencias).toContain(
-      'Cobertura insuficiente en CACAO PISTA: día 2, TURNO A (2/3).',
-    );
-    expect(resultado.advertencias).toContain(
-      'Cobertura insuficiente en CACAO PISTA: día 2, TURNO B (2/3).',
+      'Cobertura insuficiente en CACAO PISTA: día 2, TURNO A (1/2).',
     );
     expect(
       resultado.calendario

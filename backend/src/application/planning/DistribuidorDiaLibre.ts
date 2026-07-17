@@ -1,7 +1,16 @@
 import { Empleado } from '../../domain/Empleado.js';
 import { EstadoTurno } from '../../domain/EstadoTurno.js';
+import type { RequerimientoCoberturaTurnos } from './PoliticaCoberturaOperativa.js';
 
 type TurnoOperativo = 'TURNO A' | 'TURNO B';
+
+export interface OpcionesDistribucionCoordinada {
+  readonly posicionesDescansoPermitidas: ReadonlySet<number>;
+  readonly requerimientoPorPosicion: ReadonlyMap<
+    number,
+    RequerimientoCoberturaTurnos
+  >;
+}
 
 export class DistribuidorDiaLibre {
   public distribuir(
@@ -16,11 +25,6 @@ export class DistribuidorDiaLibre {
     return distribucion;
   }
 
-  /**
-   * Distribuye descansos distintos respetando la continuidad histórica.
-   * Evita que dos cajeros terminen descansando el mismo día después de que
-   * sus posiciones preferidas sean adelantadas por jornadas consecutivas.
-   */
   public distribuirConContinuidad(
     empleados: ReadonlyArray<Empleado>,
     limitesDescanso: ReadonlyMap<string, number>,
@@ -65,19 +69,17 @@ export class DistribuidorDiaLibre {
   }
 
   /**
-   * Distribuye el descanso de bomberos manteniendo la cobertura 3/3.
-   * Cada día descansa una persona del grupo que tiene cuatro integrantes y,
-   * entre los candidatos válidos, se prioriza a quien lleva más días
-   * consecutivos trabajando.
+   * Distribuye los descansos de pista como un problema de cobertura semanal.
+   * La búsqueda permite que varios empleados descansen el domingo, cuando el
+   * mínimo baja a 2/2, y evita cualquier LIBRE en viernes o sábado.
    */
   public distribuirCoordinado(
     empleados: ReadonlyArray<Empleado>,
     turnosIniciales: ReadonlyMap<string, EstadoTurno>,
     coberturaMinimaPorTurno = 3,
     limitesDescanso: ReadonlyMap<string, number> = new Map(),
+    opciones?: OpcionesDistribucionCoordinada,
   ): ReadonlyMap<string, number> {
-    const distribucion = new Map<string, number>();
-    const pendientes = new Set(empleados.map((empleado) => empleado.nombre));
     const turnoActual = new Map<string, TurnoOperativo>();
 
     for (const empleado of empleados) {
@@ -104,6 +106,207 @@ export class DistribuidorDiaLibre {
         turnosIniciales,
       );
     }
+
+    if (opciones !== undefined) {
+      const encontrada = this.buscarDistribucionSemanal(
+        empleados,
+        turnoActual,
+        limitesDescanso,
+        opciones,
+      );
+
+      if (encontrada !== null) {
+        return encontrada;
+      }
+    }
+
+    return this.distribuirCoordinadoClasico(
+      empleados,
+      turnoActual,
+      coberturaMinimaPorTurno,
+      limitesDescanso,
+    );
+  }
+
+  public distribuirCajaEscalonada(
+    empleados: ReadonlyArray<Empleado>,
+    turnosIniciales: ReadonlyMap<string, EstadoTurno>,
+    limitesDescanso: ReadonlyMap<string, number>,
+    posicionTurnoA: number,
+    posicionTurnoB: number,
+  ): ReadonlyMap<string, number> {
+    const empleadoA = empleados.find(
+      (empleado) => turnosIniciales.get(empleado.nombre)?.valor === 'TURNO A',
+    );
+    const empleadoB = empleados.find(
+      (empleado) => turnosIniciales.get(empleado.nombre)?.valor === 'TURNO B',
+    );
+
+    if (!empleadoA || !empleadoB || empleados.length !== 2) {
+      return this.distribuirConContinuidad(
+        empleados,
+        limitesDescanso,
+        turnosIniciales,
+      );
+    }
+
+    // Los días se escalonan entre estaciones para que Celio pueda cubrir
+    // un solo cajero por jornada. La regla operativa de día permitido tiene
+    // prioridad sobre la preferencia histórica calculada por continuidad.
+    return new Map([
+      [empleadoA.nombre, posicionTurnoA],
+      [empleadoB.nombre, posicionTurnoB],
+    ]);
+  }
+
+  public obtenerDiaLibre(
+    nombreEmpleado: string,
+    distribucion: ReadonlyMap<string, number>,
+  ): number {
+    const posicion = distribucion.get(nombreEmpleado);
+
+    if (posicion === undefined) {
+      throw new Error(
+        `No existe un día libre asignado para el empleado "${nombreEmpleado}".`,
+      );
+    }
+
+    return posicion;
+  }
+
+  private buscarDistribucionSemanal(
+    empleados: ReadonlyArray<Empleado>,
+    turnosIniciales: ReadonlyMap<string, TurnoOperativo>,
+    limitesDescanso: ReadonlyMap<string, number>,
+    opciones: OpcionesDistribucionCoordinada,
+  ): ReadonlyMap<string, number> | null {
+    const posicionesPermitidas = [...opciones.posicionesDescansoPermitidas].sort(
+      (a, b) => a - b,
+    );
+    const preferidos = this.distribuir(empleados);
+    const empleadosOrdenados = [...empleados].sort(
+      (primero, segundo) =>
+        this.obtenerLimite(primero.nombre, limitesDescanso) -
+          this.obtenerLimite(segundo.nombre, limitesDescanso) ||
+        primero.nombre.localeCompare(segundo.nombre),
+    );
+    let mejor: Map<string, number> | null = null;
+    let mejorPuntaje = Number.POSITIVE_INFINITY;
+    const actual = new Map<string, number>();
+
+    const buscar = (indice: number, puntaje: number): void => {
+      if (puntaje >= mejorPuntaje) {
+        return;
+      }
+
+      if (indice === empleadosOrdenados.length) {
+        if (
+          this.distribucionCumpleCobertura(
+            empleados,
+            turnosIniciales,
+            actual,
+            opciones.requerimientoPorPosicion,
+          )
+        ) {
+          mejor = new Map(actual);
+          mejorPuntaje = puntaje;
+        }
+        return;
+      }
+
+      const empleado = empleadosOrdenados[indice];
+
+      if (!empleado) {
+        return;
+      }
+
+      const limite = this.obtenerLimite(empleado.nombre, limitesDescanso);
+      const candidatas = [...posicionesPermitidas].sort((primero, segundo) => {
+        const preferido = preferidos.get(empleado.nombre) ?? 6;
+        return (
+          Math.abs(primero - preferido) - Math.abs(segundo - preferido) ||
+          primero - segundo
+        );
+      });
+
+      for (const posicion of candidatas) {
+        actual.set(empleado.nombre, posicion);
+        const preferido = preferidos.get(empleado.nombre) ?? posicion;
+        const penalizacionLimite = posicion > limite ? 100 : 0;
+        buscar(
+          indice + 1,
+          puntaje + Math.abs(posicion - preferido) + penalizacionLimite,
+        );
+        actual.delete(empleado.nombre);
+      }
+    };
+
+    buscar(0, 0);
+
+    return mejor;
+  }
+
+  private distribucionCumpleCobertura(
+    empleados: ReadonlyArray<Empleado>,
+    turnosIniciales: ReadonlyMap<string, TurnoOperativo>,
+    distribucion: ReadonlyMap<string, number>,
+    requerimientos: ReadonlyMap<number, RequerimientoCoberturaTurnos>,
+  ): boolean {
+    const turnos = new Map(turnosIniciales);
+
+    for (let posicion = 0; posicion < 7; posicion += 1) {
+      const descansan = empleados.filter(
+        (empleado) => distribucion.get(empleado.nombre) === posicion,
+      );
+      let disponiblesA = this.contarTurno(turnos, 'TURNO A');
+      let disponiblesB = this.contarTurno(turnos, 'TURNO B');
+
+      for (const empleado of descansan) {
+        const turno = turnos.get(empleado.nombre);
+
+        if (turno === 'TURNO A') {
+          disponiblesA -= 1;
+        } else if (turno === 'TURNO B') {
+          disponiblesB -= 1;
+        }
+      }
+
+      const requerido = requerimientos.get(posicion) ?? {
+        turnoA: 3,
+        turnoB: 3,
+      };
+
+      if (
+        disponiblesA < requerido.turnoA ||
+        disponiblesB < requerido.turnoB
+      ) {
+        return false;
+      }
+
+      for (const empleado of descansan) {
+        const turnoAnterior = turnos.get(empleado.nombre);
+
+        if (turnoAnterior !== undefined) {
+          turnos.set(
+            empleado.nombre,
+            turnoAnterior === 'TURNO A' ? 'TURNO B' : 'TURNO A',
+          );
+        }
+      }
+    }
+
+    return true;
+  }
+
+  private distribuirCoordinadoClasico(
+    empleados: ReadonlyArray<Empleado>,
+    turnosIniciales: ReadonlyMap<string, TurnoOperativo>,
+    coberturaMinimaPorTurno: number,
+    limitesDescanso: ReadonlyMap<string, number>,
+  ): ReadonlyMap<string, number> {
+    const distribucion = new Map<string, number>();
+    const pendientes = new Set(empleados.map((empleado) => empleado.nombre));
+    const turnoActual = new Map(turnosIniciales);
 
     for (
       let posicionDia = 0;
@@ -159,21 +362,6 @@ export class DistribuidorDiaLibre {
     }
 
     return distribucion;
-  }
-
-  public obtenerDiaLibre(
-    nombreEmpleado: string,
-    distribucion: ReadonlyMap<string, number>,
-  ): number {
-    const posicion = distribucion.get(nombreEmpleado);
-
-    if (posicion === undefined) {
-      throw new Error(
-        `No existe un día libre asignado para el empleado "${nombreEmpleado}".`,
-      );
-    }
-
-    return posicion;
   }
 
   private contarTurno(
