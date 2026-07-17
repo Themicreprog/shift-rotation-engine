@@ -198,12 +198,17 @@ export class ExcelCalendarioWriter {
             cell.border = this.crearBorde();
             cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
 
-            if (fecha === undefined || fecha.getMonth() + 1 !== mes || fecha.getFullYear() !== anio) {
+            if (fecha === undefined) {
               cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
               continue;
             }
 
-            const nombres = nombresPorEstadoYDia.get(this.claveEstadoDia(estado, fecha.getDate())) ?? [];
+            const fueraDelMes = fecha.getMonth() + 1 !== mes || fecha.getFullYear() !== anio;
+            if (fueraDelMes) {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+            }
+
+            const nombres = nombresPorEstadoYDia.get(this.claveEstadoFecha(estado, fecha)) ?? [];
             const nombre = nombres[indiceFilaEstado];
 
             if (nombre !== undefined) {
@@ -280,14 +285,14 @@ export class ExcelCalendarioWriter {
     const resultado = new Map<string, string[]>();
 
     for (const fecha of semana) {
-      if (fecha.getMonth() + 1 !== mes || fecha.getFullYear() !== anio) continue;
-
       for (const empleado of unidad.empleados) {
-        const estado = empleado.estadoDelDia(fecha.getDate()).valor as EstadoExportable;
+        const indiceDia = this.indiceDiaCalendario(unidad, fecha, mes, anio);
+        if (indiceDia === null || indiceDia > empleado.totalDias()) continue;
+        const estado = empleado.estadoDelDia(indiceDia).valor as EstadoExportable;
 
         if (!ESTADOS_EXPORTABLES.includes(estado)) continue;
 
-        const clave = this.claveEstadoDia(estado, fecha.getDate());
+        const clave = this.claveEstadoFecha(estado, fecha);
         const nombres = resultado.get(clave) ?? [];
         nombres.push(empleado.nombre);
         resultado.set(clave, nombres);
@@ -355,9 +360,36 @@ export class ExcelCalendarioWriter {
   ): Map<string, UnidadOperativa> {
     this.validarPeriodo(mes, anio);
 
-    const diasEnMes = new Date(anio, mes, 0).getDate();
     const nombresEsperados = new Set(CONFIGURACIONES_HOJAS.map(({ nombreUnidad }) => nombreUnidad));
     const unidades = new Map<string, UnidadOperativa>();
+    const periodoOrigen = calendario.obtenerPeriodoOrigen();
+
+    const inicioMes = new Date(Date.UTC(anio, mes - 1, 1));
+    const diasEnMes = new Date(anio, mes, 0).getDate();
+
+    if (periodoOrigen === null) {
+      for (const unidad of calendario.unidadesOperativas) {
+        const nombre = this.normalizarTexto(unidad.nombre);
+        if (!nombresEsperados.has(nombre)) {
+          throw new Error(`El exportador no admite la unidad operativa \"${unidad.nombre}\".`);
+        }
+        for (const empleado of unidad.empleados) {
+          if (empleado.totalDias() !== diasEnMes) {
+            throw new Error(`${empleado.nombre} debe contener los ${diasEnMes} estados de ${mes}/${anio}.`);
+          }
+        }
+        unidades.set(nombre, unidad);
+      }
+      return unidades;
+    }
+
+    if (periodoOrigen.fechaInicio.getTime() !== inicioMes.getTime()) {
+      throw new Error(`El calendario no comienza el 1/${mes}/${anio}.`);
+    }
+
+    const totalDiasVisuales = Math.round(
+      (periodoOrigen.fechaFin.getTime() - periodoOrigen.fechaInicio.getTime()) / (24 * 60 * 60 * 1000),
+    ) + 1;
 
     for (const unidad of calendario.unidadesOperativas) {
       const nombre = this.normalizarTexto(unidad.nombre);
@@ -365,49 +397,23 @@ export class ExcelCalendarioWriter {
       if (!nombresEsperados.has(nombre)) {
         throw new Error(`El exportador no admite la unidad operativa "${unidad.nombre}".`);
       }
-
       if (unidades.has(nombre)) {
         throw new Error(`La unidad operativa "${nombre}" está duplicada.`);
       }
 
-      const periodoOrigen = calendario.obtenerPeriodoOrigen();
-      const inicioMes = new Date(Date.UTC(anio, mes - 1, 1));
-      const desplazamiento =
-        periodoOrigen === null
-          ? 0
-          : Math.round((inicioMes.getTime() - periodoOrigen.fechaInicio.getTime()) / (24 * 60 * 60 * 1000));
-      const empleadosNormalizados = unidad.empleados.map((empleado) => {
-        if (empleado.totalDias() === diasEnMes && desplazamiento === 0) {
-          return empleado;
+      for (const empleado of unidad.empleados) {
+        if (empleado.totalDias() < totalDiasVisuales) {
+          throw new Error(`${empleado.nombre} debe contener los ${totalDiasVisuales} estados del período visual.`);
         }
-
-        if (periodoOrigen === null || desplazamiento < 0 || desplazamiento + diasEnMes > empleado.totalDias()) {
-          throw new Error(`${empleado.nombre} debe contener los ${diasEnMes} estados de ${mes}/${anio}.`);
-        }
-
-        return Empleado.create({
-          nombre: empleado.nombre,
-          estadosPorDia: Array.from({ length: diasEnMes }, (_, indice) => empleado.estadoDelDia(desplazamiento + indice + 1)),
-        });
-      });
-
-      for (const empleado of empleadosNormalizados) {
-        for (let dia = 1; dia <= diasEnMes; dia += 1) {
+        for (let dia = 1; dia <= totalDiasVisuales; dia += 1) {
           const estado = empleado.estadoDelDia(dia).valor;
-
           if (!ESTADOS_EXPORTABLES.includes(estado as EstadoExportable)) {
             throw new Error(`El estado "${estado}" de ${empleado.nombre} no puede exportarse.`);
           }
         }
       }
 
-      unidades.set(
-        nombre,
-        UnidadOperativa.create({
-          nombre: unidad.nombre,
-          empleados: empleadosNormalizados,
-        }),
-      );
+      unidades.set(nombre, unidad);
     }
 
     for (const nombreEsperado of nombresEsperados) {
@@ -559,8 +565,21 @@ export class ExcelCalendarioWriter {
     return `${NOMBRES_DIAS[fecha.getDay()]} ${fecha.getDate()}/${fecha.getMonth() + 1}`;
   }
 
-  private claveEstadoDia(estado: EstadoExportable, dia: number): string {
-    return `${estado}::${dia}`;
+  private claveEstadoFecha(estado: EstadoExportable, fecha: Date): string {
+    return `${estado}::${fecha.getFullYear()}-${fecha.getMonth() + 1}-${fecha.getDate()}`;
+  }
+
+  private indiceDiaCalendario(
+    unidad: UnidadOperativa,
+    fecha: Date,
+    mes: number,
+    anio: number,
+  ): number | null {
+    void unidad;
+    const inicio = new Date(Date.UTC(anio, mes - 1, 1));
+    const fechaUtc = new Date(Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()));
+    const indice = Math.round((fechaUtc.getTime() - inicio.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    return indice < 1 ? null : indice;
   }
 
   private normalizarTexto(texto: string): string {

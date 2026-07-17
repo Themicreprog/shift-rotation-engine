@@ -1,3 +1,5 @@
+import { PeriodoVisualPlanificacion } from '../../src/domain/planning/PeriodoVisualPlanificacion.js';
+import { PeriodoPlanificacion } from '../../src/domain/planning/PeriodoPlanificacion.js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -97,7 +99,12 @@ describe('continuidad mensual desde Excel real', () => {
 
         for (const empleadoDestino of unidadDestino.empleados) {
           expect(empleadoDestino.estadosPorDia).toHaveLength(
-            new Date(2026, mesDestino, 0).getDate(),
+            PeriodoVisualPlanificacion.desdePeriodoPrincipal(
+              PeriodoPlanificacion.create({
+                fechaInicio: new Date(Date.UTC(2026, mesDestino - 1, 1)),
+                fechaFin: new Date(Date.UTC(2026, mesDestino, 0)),
+              }),
+            ).totalDiasVisuales(),
           );
           const empleadoOrigen = unidadOrigen?.empleados.find(
             (empleado) => empleado.nombre === empleadoDestino.nombre,

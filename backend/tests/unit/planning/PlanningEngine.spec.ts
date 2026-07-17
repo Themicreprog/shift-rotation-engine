@@ -153,20 +153,20 @@ describe('PlanningEngine', () => {
 
     expect(joel).toBeDefined();
     expect(joel!.nombre).toBe('Joel');
-    expect(joel!.totalDias()).toBe(31);
+    expect(joel!.totalDias()).toBe(33);
     expect(joel!.estadoDelDia(1).valor).toBe('LIBRE');
     expect(joel!.estadoDelDia(31).valor).toBe('LIBRE');
 
     expect(julio).toBeDefined();
     expect(julio!.nombre).toBe('Julio');
-    expect(julio!.totalDias()).toBe(31);
+    expect(julio!.totalDias()).toBe(33);
     expect(julio!.estadoDelDia(1).valor).toBe('TURNO B');
     expect(julio!.estadoDelDia(31).valor).toBe('TURNO B');
 
     expect(cajeros!.empleados).toHaveLength(1);
     expect(mario).toBeDefined();
     expect(mario!.nombre).toBe('Mario');
-    expect(mario!.totalDias()).toBe(31);
+    expect(mario!.totalDias()).toBe(33);
     expect(mario!.estadoDelDia(1).valor).toBe('VACACIONES');
     expect(mario!.estadoDelDia(31).valor).toBe('VACACIONES');
   });

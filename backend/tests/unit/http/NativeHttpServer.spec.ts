@@ -207,7 +207,7 @@ describe('composición HTTP con el motor real', () => {
     expect(resultado.conflictos).toEqual([]);
     expect(Array.isArray(resultado.reemplazos)).toBe(true);
     expect(resultado.calendario.unidadesOperativas[0]?.empleados[0]?.estadosPorDia).toHaveLength(
-      31,
+      33,
     );
   });
 

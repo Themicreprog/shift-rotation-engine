@@ -15,6 +15,7 @@ import { EstadoTurno } from '../../domain/EstadoTurno.js';
 import { UnidadOperativa } from '../../domain/UnidadOperativa.js';
 import { ComodinesPlanificacion } from '../../domain/planning/ComodinesPlanificacion.js';
 import { PeriodoPlanificacion } from '../../domain/planning/PeriodoPlanificacion.js';
+import { PeriodoVisualPlanificacion } from '../../domain/planning/PeriodoVisualPlanificacion.js';
 import {
   ReemplazoPlanificacion,
   VacantePlanificacion,
@@ -62,9 +63,12 @@ export class PlanningEngine {
     const mesDestino = solicitud.periodoDestino.fechaInicio.getUTCMonth() + 1;
     const anioDestino =
       solicitud.periodoDestino.fechaInicio.getUTCFullYear();
+    const periodoVisual = PeriodoVisualPlanificacion.desdePeriodoPrincipal(
+      solicitud.periodoDestino,
+    );
     const diasHeredados = this.calcularDiasHeredados(solicitud);
     const periodoGeneracion = this.crearPeriodoGeneracion(
-      solicitud.periodoDestino,
+      periodoVisual.periodoCompleto,
       diasHeredados,
     );
     const comodinesOperativos = solicitud.comodines.combinar(
@@ -76,7 +80,7 @@ export class PlanningEngine {
         mes: mesDestino,
         anio: anioDestino,
         fechaInicio: solicitud.periodoDestino.fechaInicio,
-        fechaFin: solicitud.periodoDestino.fechaFin,
+        fechaFin: periodoVisual.periodoCompleto.fechaFin,
       },
     );
 
@@ -156,7 +160,7 @@ export class PlanningEngine {
         unidadCompleta,
         (dia) => this.politicaCobertura.requerimiento(
           unidadCompleta.nombre,
-          solicitud.periodoDestino.fechaDelDia(dia),
+          periodoVisual.periodoCompleto.fechaDelDia(dia),
         ),
       );
       const unidadParaDescanso = this.integrarTrabajoFlexibleEntreRoles(
@@ -169,7 +173,9 @@ export class PlanningEngine {
       );
 
       advertencias.push(
-        ...incidenciasCobertura.map(
+        ...incidenciasCobertura
+          .filter((incidencia) => periodoVisual.esDiaPrincipal(incidencia.dia))
+          .map(
           (incidencia) =>
             `Cobertura insuficiente en ${nombreUnidad}: día ${incidencia.dia}, ${incidencia.turno} (${incidencia.disponibles}/${incidencia.requeridos}).`,
         ),

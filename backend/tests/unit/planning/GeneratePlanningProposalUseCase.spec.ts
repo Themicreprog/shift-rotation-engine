@@ -84,7 +84,7 @@ describe('GeneratePlanningProposalUseCase', () => {
 
     expect(empleado).toBeDefined();
     expect(empleado!.nombre).toBe('Rony');
-    expect(empleado!.totalDias()).toBe(31);
+    expect(empleado!.totalDias()).toBe(33);
 
     // Estas expectativas cambiarán cuando el motor semanal sea el comportamiento oficial.
     expect(empleado!.estadoDelDia(1).valor).toBe('TURNO A');
